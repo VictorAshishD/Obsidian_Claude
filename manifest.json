@@ -1,0 +1,10 @@
+{
+  "id": "vault-claude",
+  "name": "Vault Claude",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Bring Claude's agentic AI capabilities directly into Obsidian — read, write, search, and transform your vault with natural language.",
+  "author": "Victor Dasari",
+  "authorUrl": "https://victordasari.com",
+  "isDesktopOnly": true
+}

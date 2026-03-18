@@ -1,0 +1,325 @@
+/* ==========================================
+   Vault Claude — Obsidian Plugin Styles
+   ========================================== */
+
+/* --- Container --- */
+.vault-claude-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* --- Header --- */
+.vault-claude-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.vault-claude-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.vault-claude-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.vault-claude-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.vault-claude-icon-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* --- Messages Area --- */
+.vault-claude-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* --- Welcome Screen --- */
+.vault-claude-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 16px;
+  flex: 1;
+}
+
+.vault-claude-welcome h3 {
+  margin: 0 0 8px;
+  color: var(--text-normal);
+}
+
+.vault-claude-welcome p {
+  margin: 0 0 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vault-claude-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.vault-claude-suggestion {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.vault-claude-suggestion:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* --- Message Bubbles --- */
+.vault-claude-message {
+  border-radius: var(--radius-m);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 100%;
+}
+
+.vault-claude-message-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
+.vault-claude-message-content {
+  color: var(--text-normal);
+}
+
+.vault-claude-message-content p:first-child {
+  margin-top: 0;
+}
+
+.vault-claude-message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.vault-claude-user {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  align-self: flex-end;
+}
+
+.vault-claude-user .vault-claude-message-label {
+  color: var(--text-on-accent);
+  opacity: 0.7;
+}
+
+.vault-claude-user .vault-claude-message-content {
+  color: var(--text-on-accent);
+}
+
+.vault-claude-assistant {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.vault-claude-system {
+  background: var(--background-modifier-error);
+  color: var(--text-error);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
+}
+
+/* --- Tool Call Cards --- */
+.vault-claude-tool-card {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-monospace);
+}
+
+.vault-claude-tool-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vault-claude-tool-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.vault-claude-tool-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.vault-claude-tool-name {
+  font-weight: 600;
+  color: var(--text-accent);
+}
+
+.vault-claude-tool-status {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.vault-claude-tool-input {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.vault-claude-tool-result {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* --- Input Area --- */
+.vault-claude-input-area {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vault-claude-input {
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-interface);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  line-height: 1.4;
+}
+
+.vault-claude-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+.vault-claude-input::placeholder {
+  color: var(--text-faint);
+}
+
+.vault-claude-input-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vault-claude-token-counter {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.vault-claude-send-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.vault-claude-send-btn:hover {
+  opacity: 0.9;
+}
+
+.vault-claude-stop-btn {
+  background: var(--text-error);
+}
+
+/* --- Code blocks in messages --- */
+.vault-claude-message-content pre {
+  background: var(--background-primary-alt);
+  border-radius: var(--radius-s);
+  padding: 8px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.vault-claude-message-content code {
+  background: var(--background-primary-alt);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.vault-claude-message-content pre code {
+  background: none;
+  padding: 0;
+}
+
+/* --- Scrollbar --- */
+.vault-claude-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vault-claude-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vault-claude-messages::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+}
+
+.vault-claude-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
