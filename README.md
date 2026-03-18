@@ -1,8 +1,8 @@
-# Vault Claude
+# Obsidian Claude
 
-**Bring Claude's agentic AI capabilities directly into Obsidian.**
+**Agentic AI assistant for Obsidian — chat with Claude to read, write, search, and transform your notes using natural language.**
 
-Vault Claude is an Obsidian plugin that embeds a powerful AI assistant in your sidebar. It can read, write, search, and transform your notes using natural language. Unlike generic AI chat plugins, Vault Claude understands Obsidian — it knows about wikilinks, frontmatter, backlinks, tags, daily notes, and your vault's folder structure.
+Obsidian Claude embeds a powerful AI assistant in your sidebar. It can read, write, search, and transform your notes using natural language. Unlike generic AI chat plugins, Obsidian Claude understands Obsidian — it knows about wikilinks, frontmatter, backlinks, tags, daily notes, and your vault's folder structure.
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -19,6 +19,10 @@ Vault Claude is an Obsidian plugin that embeds a powerful AI assistant in your s
 | **Claude Code CLI** | Your existing `claude` installation | Included with Claude subscription | Users who already have Claude Code |
 | **Anthropic API** | Direct API key | Pay-per-use | Full control, specific model selection |
 | **OpenRouter** | OpenRouter API key | Pay-per-use | Access to 200+ models (Claude, GPT, Gemini, Llama, etc.) |
+
+### Two-Tiered Model System
+
+Assign a **primary model** for complex tasks and a **light model** for quick, cheap operations (tagging, TOC generation, readability checks, finding links). Saves cost without sacrificing quality where it matters.
 
 ### Sidebar Chat Panel
 - Full markdown rendering in responses
@@ -46,24 +50,19 @@ Claude doesn't just see your files — it understands your vault:
 | `get_daily_note` | Access daily notes by date |
 | `resolve_wikilinks` | Resolve `[[wikilinks]]` to file paths |
 
-### 10 Slash Commands
+### 30+ Slash Commands
 
-Type `/` in the chat to access quick commands:
+Type `/` in the chat to access commands organized by category:
 
-| Command | Description |
-|---------|-------------|
-| `/summarize` | Summarize the active note |
-| `/outline` | Generate a structured outline |
-| `/rewrite` | Rewrite with a specified style |
-| `/translate` | Translate to another language |
-| `/ask` | Ask about the vault (read-only) |
-| `/tags` | Suggest tags for the active note |
-| `/links` | Suggest wikilinks to related notes |
-| `/daily` | Create or update today's daily note |
-| `/fixup` | Fix grammar, spelling, and formatting |
-| `/extract` | Extract a section into a new note |
+| Category | Commands |
+|----------|----------|
+| **Writing** | `/brainstorm`, `/wordsmith`, `/expand`, `/draft`, `/headline`, `/metaphor`, `/dialogue`, `/hook`, `/conclude` |
+| **Editing** | `/summarize`, `/outline`, `/rewrite`, `/fixup`, `/shorten`, `/tone`, `/translate` |
+| **Analysis** | `/critique`, `/counterargument`, `/audience`, `/readability` |
+| **Research** | `/ask`, `/find-hyperlinks`, `/research`, `/connect`, `/bibliography` |
+| **Organization** | `/tags`, `/links`, `/toc`, `/frontmatter`, `/daily`, `/extract`, `/merge`, `/audit` |
 
-All slash commands are also registered in Obsidian's command palette (Ctrl+P).
+All slash commands are also available in Obsidian's command palette (Ctrl+P).
 
 ### @-Mention Context
 
@@ -90,22 +89,22 @@ When Claude proposes file edits (in "Approve Edits" mode), changes are shown as 
 
 - Per-conversation token count with cost estimates
 - Hover the counter for a detailed breakdown (input/output tokens, costs)
-- Supports pricing for all Anthropic models
+- Supports pricing for all Anthropic and OpenRouter models
 
 ---
 
 ## Installation
 
-### From the Plugin (Recommended)
+### From Community Plugins (Recommended)
 
 1. Open **Settings > Community Plugins** in Obsidian
-2. Search for **Vault Claude**
+2. Search for **Obsidian Claude**
 3. Click **Install**, then **Enable**
 
 ### Manual Installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/VictorDasari/vault-claude/releases)
-2. Create a folder: `.obsidian/plugins/vault-claude/`
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/VictorDasari/obsidian-claude/releases)
+2. Create a folder: `.obsidian/plugins/obsidian-claude/`
 3. Copy the three files into that folder
 4. Enable the plugin in **Settings > Community Plugins**
 
@@ -118,7 +117,7 @@ npm run dev      # Watch mode (auto-rebuilds)
 npm run build    # Production build
 ```
 
-After building, copy `main.js`, `manifest.json`, and `styles.css` to `.obsidian/plugins/vault-claude/`.
+After building, copy `main.js`, `manifest.json`, and `styles.css` to `.obsidian/plugins/obsidian-claude/`.
 
 ---
 
@@ -174,9 +173,9 @@ src/
 │   ├── openrouter-client.ts     # OpenRouter API client (OpenAI format)
 │   └── obsidian-tools.ts        # 11 Obsidian-native tool definitions
 ├── commands/
-│   └── slash-commands.ts        # Slash command registry and parser
+│   └── slash-commands.ts        # 30+ slash commands with two-tiered model routing
 ├── storage/
-│   └── conversation-store.ts    # Conversation persistence (.vault-claude/conversations/)
+│   └── conversation-store.ts    # Conversation persistence (.obsidian-claude/conversations/)
 └── ui/
     ├── chat-view.ts             # Sidebar chat panel (ItemView)
     ├── cost-tracker.ts          # Token usage and cost estimation
@@ -192,35 +191,9 @@ src/
 
 ### Data Storage
 
-- **Settings**: Stored in `.obsidian/plugins/vault-claude/data.json` (Obsidian's standard plugin data)
-- **Conversations**: Saved to `.vault-claude/conversations/*.json` within your vault
+- **Settings**: Stored in `.obsidian/plugins/obsidian-claude/data.json` (Obsidian's standard plugin data)
+- **Conversations**: Saved to `.obsidian-claude/conversations/*.json` within your vault
 - **API keys**: Stored locally in plugin data — never transmitted except to your configured API provider
-
----
-
-## Technology Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Language | TypeScript |
-| Plugin API | Obsidian Plugin API |
-| Anthropic API | `@anthropic-ai/sdk` |
-| OpenRouter API | Custom client via `requestUrl` (Obsidian's CORS-free fetch) |
-| CLI Integration | Node.js `child_process.exec` |
-| Build | esbuild |
-| Type checking | TypeScript compiler |
-
----
-
-## Roadmap
-
-- [ ] Vision support (drag images into chat)
-- [ ] MCP server support (connect external tools)
-- [ ] Session resume across plugin reloads
-- [ ] Custom agents (specialized personas)
-- [ ] Multi-file diff review panel
-- [ ] Undo integration (Ctrl+Z reverts Claude's changes)
-- [ ] Community plugin directory submission
 
 ---
 

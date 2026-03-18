@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-vault-claude",
+  "name": "obsidian-claude",
   "version": "0.1.0",
-  "description": "Bring Claude's agentic AI capabilities directly into Obsidian — read, write, search, and transform your vault with natural language.",
+  "description": "Agentic AI assistant for Obsidian — chat with Claude to read, write, search, and transform your notes using natural language.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

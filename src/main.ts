@@ -25,7 +25,7 @@ export default class VaultClaudePlugin extends Plugin {
     this.registerView(VIEW_TYPE_CHAT, (leaf) => new ChatView(leaf, this));
 
     // Add ribbon icon to toggle chat
-    this.addRibbonIcon("message-circle", "Open Vault Claude", () => {
+    this.addRibbonIcon("message-circle", "Open Obsidian Claude", () => {
       this.activateChatView();
     });
 

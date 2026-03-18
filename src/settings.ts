@@ -16,6 +16,7 @@ export interface OpenRouterModel {
 export interface VaultClaudeSettings {
   apiKey: string;
   model: string;
+  lightModel: string;
   permissionMode: PermissionMode;
   authProvider: AuthProvider;
   maxTokens: number;
@@ -32,6 +33,7 @@ export interface VaultClaudeSettings {
 export const DEFAULT_SETTINGS: VaultClaudeSettings = {
   apiKey: "",
   model: "claude-sonnet-4-6",
+  lightModel: "claude-haiku-4-5-20251001",
   permissionMode: "approve-edits",
   authProvider: "claude-cli",
   maxTokens: 8192,
@@ -74,6 +76,7 @@ export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
 export class VaultClaudeSettingTab extends PluginSettingTab {
   plugin: VaultClaudePlugin;
   private modelDropdownEl: HTMLSelectElement | null = null;
+  private lightModelDropdownEl: HTMLSelectElement | null = null;
   private cliStatus: CLIDetectionResult | null = null;
 
   constructor(app: App, plugin: VaultClaudePlugin) {
@@ -93,7 +96,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     const modeDesc = containerEl.createDiv("vault-claude-mode-desc");
     modeDesc.innerHTML =
       '<p style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">' +
-      "Choose how Vault Claude connects to AI. You can use your <strong>existing Claude Code installation</strong> " +
+      "Choose how Obsidian Claude connects to AI. You can use your <strong>existing Claude Code installation</strong> " +
       "(no extra cost if you have a Claude subscription), or connect directly via <strong>API key</strong> " +
       "for more control over model selection and providers.</p>";
 
@@ -150,6 +153,54 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             }
           })
       );
+
+    // ================================================================
+    // LIGHT MODEL (Two-Tiered System)
+    // ================================================================
+    containerEl.createEl("h2", { text: "Two-Tiered Model System" });
+
+    const tierDesc = containerEl.createDiv("vault-claude-mode-desc");
+    tierDesc.innerHTML =
+      '<p style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">' +
+      "Some quick tasks (tagging, TOC generation, readability checks, finding links) use a <strong>lighter, " +
+      "cheaper model</strong> to save cost and respond faster. Complex tasks use your primary model above.</p>";
+
+    if (provider === "openrouter") {
+      const lightSetting = new Setting(containerEl)
+        .setName("Light model")
+        .setDesc("Used for quick tasks marked with \u26A1. Select from your OpenRouter models.");
+
+      lightSetting.addDropdown((dropdown) => {
+        this.lightModelDropdownEl = dropdown.selectEl;
+        const cached = this.plugin.settings.openRouterModelsCache;
+        if (cached.length > 0) {
+          this.populateModelDropdown(dropdown.selectEl, cached);
+          dropdown.setValue(this.plugin.settings.lightModel);
+        } else {
+          dropdown.addOption("", "-- Refresh models above first --");
+          dropdown.setDisabled(true);
+        }
+        dropdown.onChange(async (value: string) => {
+          this.plugin.settings.lightModel = value;
+          await this.plugin.saveSettings();
+        });
+      });
+    } else {
+      new Setting(containerEl)
+        .setName("Light model")
+        .setDesc("Used for quick tasks marked with \u26A1 (tags, TOC, links, readability)")
+        .addDropdown((dropdown) => {
+          for (const [id, label] of Object.entries(ANTHROPIC_MODELS)) {
+            dropdown.addOption(id, label);
+          }
+          dropdown
+            .setValue(this.plugin.settings.lightModel)
+            .onChange(async (value: string) => {
+              this.plugin.settings.lightModel = value;
+              await this.plugin.saveSettings();
+            });
+        });
+    }
 
     // ================================================================
     // PERMISSIONS
@@ -233,6 +284,32 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    // ================================================================
+    // SAVE BUTTON
+    // ================================================================
+    const saveSection = containerEl.createDiv("vault-claude-save-section");
+    saveSection.style.cssText =
+      "margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--background-modifier-border); " +
+      "display: flex; justify-content: flex-end; gap: 12px; align-items: center;";
+
+    const savedMsg = saveSection.createSpan();
+    savedMsg.style.cssText = "color: var(--text-success); font-size: 12px; opacity: 0; transition: opacity 0.3s;";
+    savedMsg.setText("\u2713 Settings saved");
+
+    const saveBtn = saveSection.createEl("button", {
+      text: "Save Settings",
+      cls: "mod-cta",
+    });
+    saveBtn.addEventListener("click", async () => {
+      await this.plugin.saveSettings();
+      this.plugin.agentService.initialize();
+      savedMsg.style.opacity = "1";
+      setTimeout(() => {
+        savedMsg.style.opacity = "0";
+      }, 2000);
+      new Notice("Obsidian Claude settings saved");
+    });
   }
 
   // ================================================================
@@ -245,7 +322,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     infoBox.innerHTML =
       '<div style="background: var(--background-secondary); border: 1px solid var(--background-modifier-border); ' +
       'border-radius: var(--radius-m); padding: 12px; margin-bottom: 12px; font-size: 12px;">' +
-      "<strong>How this works:</strong> Vault Claude sends prompts to the Claude Code CLI " +
+      "<strong>How this works:</strong> Obsidian Claude sends prompts to the Claude Code CLI " +
       "(<code>claude -p</code>) installed on your system. This uses your existing Claude " +
       "subscription — no separate API key or extra cost needed." +
       "<br><br>" +
@@ -457,6 +534,12 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             this.modelDropdownEl.disabled = false;
           }
 
+          if (this.lightModelDropdownEl) {
+            this.populateModelDropdown(this.lightModelDropdownEl, models);
+            this.lightModelDropdownEl.value = this.plugin.settings.lightModel;
+            this.lightModelDropdownEl.disabled = false;
+          }
+
           new Notice(`Loaded ${models.length} models from OpenRouter`);
         } catch (err) {
           new Notice(
@@ -501,6 +584,12 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         this.populateModelDropdown(this.modelDropdownEl, models);
         this.modelDropdownEl.value = this.plugin.settings.model;
         this.modelDropdownEl.disabled = false;
+      }
+
+      if (this.lightModelDropdownEl) {
+        this.populateModelDropdown(this.lightModelDropdownEl, models);
+        this.lightModelDropdownEl.value = this.plugin.settings.lightModel;
+        this.lightModelDropdownEl.disabled = false;
       }
     } catch {
       // Silent fail

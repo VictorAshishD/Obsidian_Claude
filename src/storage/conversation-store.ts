@@ -1,7 +1,7 @@
 import type { App } from "obsidian";
 import type { ChatMessage } from "../agent/agent-service";
 
-const STORAGE_DIR = ".vault-claude/conversations";
+const STORAGE_DIR = ".obsidian-claude/conversations";
 
 export interface ConversationMeta {
   id: string;
@@ -26,9 +26,9 @@ export class ConversationStore {
       await this.app.vault.createFolder(STORAGE_DIR);
     }
     // Also ensure parent exists
-    const parent = this.app.vault.getAbstractFileByPath(".vault-claude");
+    const parent = this.app.vault.getAbstractFileByPath(".obsidian-claude");
     if (!parent) {
-      await this.app.vault.createFolder(".vault-claude");
+      await this.app.vault.createFolder(".obsidian-claude");
     }
   }
 

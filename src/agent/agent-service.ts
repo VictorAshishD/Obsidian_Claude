@@ -96,11 +96,12 @@ export class AgentService {
   async sendMessage(
     userMessage: string,
     callbacks: StreamCallbacks,
-    contextNote?: { path: string; content: string }
+    contextNote?: { path: string; content: string },
+    useLightModel?: boolean
   ): Promise<void> {
     if (!this.isReady()) {
       callbacks.onError(
-        new Error("API key not configured. Open Settings > Vault Claude to add your key.")
+        new Error("API key not configured. Open Settings > Obsidian Claude to add your key.")
       );
       return;
     }
@@ -115,13 +116,18 @@ export class AgentService {
     const tools = getObsidianTools(this.app);
     const systemPrompt = this.buildSystemPrompt();
 
+    // Two-tiered model: resolve which model to use
+    const effectiveModel = useLightModel && this.settings.lightModel
+      ? this.settings.lightModel
+      : this.settings.model;
+
     try {
       if (this.settings.authProvider === "claude-cli") {
-        await this.cliLoop(messageContent, systemPrompt, callbacks);
+        await this.cliLoop(messageContent, systemPrompt, callbacks, effectiveModel);
       } else if (this.settings.authProvider === "openrouter") {
-        await this.openRouterLoop(messageContent, tools, systemPrompt, callbacks);
+        await this.openRouterLoop(messageContent, tools, systemPrompt, callbacks, effectiveModel);
       } else {
-        await this.anthropicLoop(messageContent, tools, systemPrompt, callbacks);
+        await this.anthropicLoop(messageContent, tools, systemPrompt, callbacks, effectiveModel);
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") return;
@@ -137,7 +143,8 @@ export class AgentService {
     userMessage: string,
     tools: ReturnType<typeof getObsidianTools>,
     systemPrompt: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    effectiveModel?: string
   ): Promise<void> {
     this.conversationHistory.push({ role: "user", content: userMessage });
 
@@ -154,7 +161,7 @@ export class AgentService {
       const toolCalls: ToolCallInfo[] = [];
 
       const stream = this.anthropicClient!.messages.stream({
-        model: this.settings.model,
+        model: effectiveModel || this.settings.model,
         max_tokens: this.settings.maxTokens,
         system: systemPrompt,
         messages: this.conversationHistory,
@@ -215,7 +222,8 @@ export class AgentService {
     userMessage: string,
     tools: ReturnType<typeof getObsidianTools>,
     systemPrompt: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    effectiveModel?: string
   ): Promise<void> {
     // Ensure system prompt is first message
     if (this.orConversationHistory.length === 0) {
@@ -240,7 +248,7 @@ export class AgentService {
       // Recreate client each iteration in case model changed
       const client = new OpenRouterClient(
         this.settings.apiKey,
-        this.settings.model,
+        effectiveModel || this.settings.model,
         this.settings.maxTokens
       );
 
@@ -333,7 +341,8 @@ export class AgentService {
   private async cliLoop(
     userMessage: string,
     systemPrompt: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    effectiveModel?: string
   ): Promise<void> {
     // The CLI handles its own tool execution (file reads, writes, bash, etc.)
     // We just send the prompt and get back the final result.
@@ -351,8 +360,9 @@ export class AgentService {
       maxTurns: this.settings.cliMaxTurns || 10,
     };
 
-    if (this.settings.model) {
-      options.model = this.settings.model;
+    const modelToUse = effectiveModel || this.settings.model;
+    if (modelToUse) {
+      options.model = modelToUse;
     }
 
     if (this.settings.systemPrompt.trim()) {
@@ -401,7 +411,7 @@ export class AgentService {
     const parts: string[] = [];
 
     parts.push(
-      `You are Vault Claude, an AI assistant embedded in the Obsidian note-taking app. ` +
+      `You are Obsidian Claude, an AI assistant embedded in the Obsidian note-taking app. ` +
         `You have access to the user's vault "${vaultName}" through specialized tools. ` +
         `You can read, write, search, and analyze notes in the vault.\n\n` +
         `Guidelines:\n` +

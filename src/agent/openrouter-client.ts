@@ -85,7 +85,7 @@ export class OpenRouterClient {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://obsidian.md",
-        "X-Title": "Vault Claude (Obsidian Plugin)",
+        "X-Title": "Obsidian Claude",
       },
       body: JSON.stringify(body),
     });

@@ -36,7 +36,7 @@ export class ChatView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Vault Claude";
+    return "Obsidian Claude";
   }
 
   getIcon(): string {
@@ -50,7 +50,7 @@ export class ChatView extends ItemView {
 
     // Header
     const header = container.createDiv("vault-claude-header");
-    header.createEl("h4", { text: "Vault Claude" });
+    header.createEl("h4", { text: "Obsidian Claude" });
 
     const headerActions = header.createDiv("vault-claude-header-actions");
 
@@ -253,19 +253,25 @@ export class ChatView extends ItemView {
 
   private showWelcome() {
     const welcome = this.messagesContainer.createDiv("vault-claude-welcome");
-    welcome.createEl("h3", { text: "Welcome to Vault Claude" });
+    welcome.createEl("h3", { text: "Obsidian Claude" });
     welcome.createEl("p", {
-      text: "Ask me anything about your vault. I can read, search, create, and edit your notes.",
+      text: "Your AI writing partner. Ask anything, or pick a quick action below.",
     });
 
-    // Slash command hints
+    // Curated featured commands — 6 most useful, one from each category
+    const featured = ["/brainstorm", "/wordsmith", "/summarize", "/critique", "/find-hyperlinks", "/ask"];
+    const featuredCmds = featured
+      .map((name) => SLASH_COMMANDS.find((c) => c.name === name))
+      .filter(Boolean) as typeof SLASH_COMMANDS;
+
     const cmdSection = welcome.createDiv("vault-claude-welcome-commands");
-    cmdSection.createEl("p", { text: "Quick commands:", cls: "vault-claude-welcome-label" });
-    const cmdGrid = cmdSection.createDiv("vault-claude-command-grid");
-    for (const cmd of SLASH_COMMANDS.slice(0, 6)) {
-      const btn = cmdGrid.createEl("button", { cls: "vault-claude-suggestion" });
+    const cmdGrid = cmdSection.createDiv("vault-claude-featured-grid");
+
+    for (const cmd of featuredCmds) {
+      const btn = cmdGrid.createEl("button", { cls: "vault-claude-featured-btn" });
       btn.createSpan({ text: cmd.name, cls: "vault-claude-cmd-name" });
-      btn.createSpan({ text: ` ${cmd.description}`, cls: "vault-claude-cmd-desc" });
+      btn.createEl("br");
+      btn.createSpan({ text: cmd.description, cls: "vault-claude-cmd-desc" });
       btn.addEventListener("click", () => {
         this.inputEl.value = cmd.name + " ";
         this.inputEl.focus();
@@ -287,6 +293,10 @@ export class ChatView extends ItemView {
         this.inputEl.focus();
       });
     }
+
+    // Hint for full command list
+    const hint = welcome.createDiv("vault-claude-welcome-hint");
+    hint.setText(`Type / for all ${SLASH_COMMANDS.length} commands, or @ to mention a note`);
   }
 
   /** Handle input changes for slash command hints */
@@ -351,7 +361,7 @@ export class ChatView extends ItemView {
 
     if (!this.plugin.agentService.isReady()) {
       this.addSystemMessage(
-        "API key not configured. Go to Settings > Vault Claude to add your key."
+        "API key not configured. Go to Settings > Obsidian Claude to add your key."
       );
       return;
     }
@@ -371,6 +381,7 @@ export class ChatView extends ItemView {
     const activeFile = this.app.workspace.getActiveFile();
 
     // Check for slash commands
+    let useLightModel = false;
     const slashParsed = parseSlashCommand(text);
     if (slashParsed) {
       prompt = buildSlashCommandPrompt(
@@ -378,6 +389,7 @@ export class ChatView extends ItemView {
         slashParsed.userText,
         activeFile?.path
       );
+      useLightModel = !!slashParsed.command.useLightModel;
     }
 
     // Add @-mention context
@@ -421,6 +433,7 @@ export class ChatView extends ItemView {
     await this.plugin.agentService.sendMessage(
       prompt,
       {
+
         onToken: (token) => {
           this.currentAssistantContent += token;
           this.renderAssistantMessage();
@@ -462,7 +475,8 @@ export class ChatView extends ItemView {
           this.finishGeneration();
         },
       },
-      contextNote
+      contextNote,
+      useLightModel
     );
   }
 
