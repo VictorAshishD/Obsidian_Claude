@@ -2,17 +2,24 @@ import { Plugin, WorkspaceLeaf } from "obsidian";
 import { VaultClaudeSettingTab, DEFAULT_SETTINGS, type VaultClaudeSettings } from "./settings";
 import { AgentService } from "./agent/agent-service";
 import { ChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
+import { SLASH_COMMANDS } from "./commands/slash-commands";
+import { ConversationStore } from "./storage/conversation-store";
+import { CostTracker } from "./ui/cost-tracker";
 
 export default class VaultClaudePlugin extends Plugin {
   settings: VaultClaudeSettings = DEFAULT_SETTINGS;
   agentService!: AgentService;
+  conversationStore!: ConversationStore;
+  costTracker!: CostTracker;
 
   async onload() {
     await this.loadSettings();
 
-    // Initialize agent service
+    // Initialize services
     this.agentService = new AgentService(this.app, this.settings);
     this.agentService.initialize();
+    this.conversationStore = new ConversationStore(this.app);
+    this.costTracker = new CostTracker();
 
     // Register the chat sidebar view
     this.registerView(VIEW_TYPE_CHAT, (leaf) => new ChatView(leaf, this));
@@ -22,17 +29,20 @@ export default class VaultClaudePlugin extends Plugin {
       this.activateChatView();
     });
 
-    // Register commands
+    // --- Core commands ---
     this.addCommand({
       id: "open-chat",
       name: "Open chat panel",
+      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "l" }],
       callback: () => this.activateChatView(),
     });
 
     this.addCommand({
       id: "new-conversation",
       name: "Start new conversation",
+      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "n" }],
       callback: () => {
+        this.costTracker.resetConversation();
         this.agentService.clearHistory();
         const view = this.getChatView();
         if (view) view.clearChat();
@@ -44,6 +54,40 @@ export default class VaultClaudePlugin extends Plugin {
       name: "Stop current generation",
       callback: () => this.agentService.abort(),
     });
+
+    this.addCommand({
+      id: "save-conversation",
+      name: "Save current conversation",
+      callback: () => {
+        const view = this.getChatView();
+        if (view) view.saveConversation();
+      },
+    });
+
+    this.addCommand({
+      id: "load-conversation",
+      name: "Load a saved conversation",
+      callback: () => {
+        const view = this.getChatView();
+        if (view) view.showConversationList();
+      },
+    });
+
+    // --- Slash commands registered as Obsidian commands ---
+    for (const cmd of SLASH_COMMANDS) {
+      this.addCommand({
+        id: `slash-${cmd.name.slice(1)}`,
+        name: `${cmd.name} — ${cmd.description}`,
+        callback: async () => {
+          await this.activateChatView();
+          const view = this.getChatView();
+          if (view) {
+            view.insertText(cmd.name + " ");
+            view.focusInput();
+          }
+        },
+      });
+    }
 
     // Settings tab
     this.addSettingTab(new VaultClaudeSettingTab(this.app, this));
@@ -59,7 +103,7 @@ export default class VaultClaudePlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    this.agentService.initialize(); // reinitialize client with new settings
+    this.agentService.initialize();
   }
 
   /** Open or focus the chat sidebar */

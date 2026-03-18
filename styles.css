@@ -306,6 +306,383 @@
   padding: 0;
 }
 
+/* --- Input Wrapper (for autocomplete positioning) --- */
+.vault-claude-input-wrapper {
+  position: relative;
+}
+
+/* --- Slash Command Hints --- */
+.vault-claude-slash-hint {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.vault-claude-slash-item {
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vault-claude-slash-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.vault-claude-cmd-name {
+  font-weight: 600;
+  color: var(--text-accent);
+}
+
+.vault-claude-cmd-desc {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* --- Welcome Commands Grid --- */
+.vault-claude-welcome-commands {
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 16px;
+}
+
+.vault-claude-welcome-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.vault-claude-command-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* --- @-Mention Autocomplete Dropdown --- */
+.vault-claude-mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 4px;
+}
+
+.vault-claude-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.vault-claude-mention-item:hover,
+.vault-claude-mention-item.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.vault-claude-mention-icon {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.vault-claude-mention-label {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.vault-claude-mention-path {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+/* --- Mention Tags (above input) --- */
+.vault-claude-mention-tags {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.vault-claude-mention-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text-accent);
+}
+
+.vault-claude-mention-tag-icon {
+  display: flex;
+  align-items: center;
+}
+
+.vault-claude-mention-tag-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.vault-claude-mention-tag-remove {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.vault-claude-mention-tag-remove:hover {
+  color: var(--text-error);
+}
+
+.vault-claude-mention-tag-remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* --- Diff View --- */
+.vault-claude-diff-card {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 10px;
+  font-size: 12px;
+}
+
+.vault-claude-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.vault-claude-diff-path {
+  font-weight: 600;
+  font-family: var(--font-monospace);
+  color: var(--text-accent);
+}
+
+.vault-claude-diff-desc {
+  color: var(--text-muted);
+}
+
+.vault-claude-diff-content {
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  padding: 4px;
+}
+
+.vault-claude-diff-line {
+  display: flex;
+  padding: 1px 6px;
+  line-height: 1.5;
+}
+
+.vault-claude-diff-add {
+  background: rgba(0, 180, 0, 0.12);
+}
+
+.vault-claude-diff-remove {
+  background: rgba(220, 0, 0, 0.12);
+}
+
+.vault-claude-diff-prefix {
+  color: var(--text-muted);
+  user-select: none;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.vault-claude-diff-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.vault-claude-diff-separator {
+  text-align: center;
+  color: var(--text-faint);
+  padding: 2px 0;
+}
+
+.vault-claude-diff-stats {
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.vault-claude-diff-adds {
+  color: #2da44e;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.vault-claude-diff-removes {
+  color: #cf222e;
+  font-weight: 600;
+}
+
+.vault-claude-diff-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vault-claude-diff-accept {
+  background: #2da44e;
+  color: white;
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vault-claude-diff-reject {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vault-claude-diff-badge {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.vault-claude-diff-badge-accepted {
+  color: #2da44e;
+}
+
+.vault-claude-diff-badge-rejected {
+  color: #cf222e;
+}
+
+.vault-claude-diff-accepted {
+  opacity: 0.7;
+}
+
+.vault-claude-diff-rejected {
+  opacity: 0.5;
+}
+
+/* --- Conversation History Overlay --- */
+.vault-claude-history-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--background-primary);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vault-claude-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.vault-claude-history-header h4 {
+  margin: 0;
+}
+
+.vault-claude-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.vault-claude-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  margin-bottom: 6px;
+}
+
+.vault-claude-history-item:hover {
+  background: var(--background-secondary);
+}
+
+.vault-claude-history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.vault-claude-history-title {
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-claude-history-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.vault-claude-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.vault-claude-history-load {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vault-claude-history-delete {
+  color: var(--text-muted);
+}
+
+.vault-claude-history-delete:hover {
+  color: var(--text-error);
+}
+
 /* --- Scrollbar --- */
 .vault-claude-messages::-webkit-scrollbar {
   width: 6px;
