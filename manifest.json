@@ -1,9 +1,9 @@
 {
-  "id": "obsidian-claude",
-  "name": "Obsidian Claude",
+  "id": "vault-claude",
+  "name": "Vault Claude",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Agentic AI assistant for Obsidian — chat with Claude to read, write, search, and transform your notes using natural language.",
+  "description": "Agentic AI assistant — chat with Claude to read, write, search, and transform your notes using natural language.",
   "author": "Victor Dasari",
   "authorUrl": "https://victordasari.com",
   "isDesktopOnly": true
