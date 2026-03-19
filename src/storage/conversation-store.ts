@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import { TFile, TFolder, type App } from "obsidian";
 import type { ChatMessage } from "../agent/agent-service";
 
 const STORAGE_DIR = ".obsidian-claude/conversations";
@@ -21,14 +21,13 @@ export class ConversationStore {
 
   /** Ensure the storage directory exists */
   async ensureDir(): Promise<void> {
-    const folder = this.app.vault.getAbstractFileByPath(STORAGE_DIR);
-    if (!folder) {
-      await this.app.vault.createFolder(STORAGE_DIR);
-    }
-    // Also ensure parent exists
     const parent = this.app.vault.getAbstractFileByPath(".obsidian-claude");
     if (!parent) {
       await this.app.vault.createFolder(".obsidian-claude");
+    }
+    const folder = this.app.vault.getAbstractFileByPath(STORAGE_DIR);
+    if (!folder) {
+      await this.app.vault.createFolder(STORAGE_DIR);
     }
   }
 
@@ -39,8 +38,8 @@ export class ConversationStore {
     const content = JSON.stringify(conversation, null, 2);
 
     const existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing && "extension" in existing) {
-      await this.app.vault.modify(existing as import("obsidian").TFile, content);
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, content);
     } else {
       await this.app.vault.create(path, content);
     }
@@ -50,9 +49,9 @@ export class ConversationStore {
   async load(id: string): Promise<SavedConversation | null> {
     const path = `${STORAGE_DIR}/${id}.json`;
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!file || !("extension" in file)) return null;
+    if (!(file instanceof TFile)) return null;
 
-    const content = await this.app.vault.read(file as import("obsidian").TFile);
+    const content = await this.app.vault.read(file);
     try {
       return JSON.parse(content) as SavedConversation;
     } catch {
@@ -64,16 +63,15 @@ export class ConversationStore {
   async list(): Promise<ConversationMeta[]> {
     await this.ensureDir();
     const folder = this.app.vault.getAbstractFileByPath(STORAGE_DIR);
-    if (!folder || !("children" in folder)) return [];
+    if (!(folder instanceof TFolder)) return [];
 
     const conversations: ConversationMeta[] = [];
-    const children = (folder as import("obsidian").TFolder).children;
 
-    for (const child of children) {
-      if (!("extension" in child) || (child as import("obsidian").TFile).extension !== "json") continue;
+    for (const child of folder.children) {
+      if (!(child instanceof TFile) || child.extension !== "json") continue;
 
       try {
-        const content = await this.app.vault.read(child as import("obsidian").TFile);
+        const content = await this.app.vault.read(child);
         const data = JSON.parse(content) as SavedConversation;
         conversations.push({
           id: data.id,
@@ -95,15 +93,15 @@ export class ConversationStore {
   async delete(id: string): Promise<void> {
     const path = `${STORAGE_DIR}/${id}.json`;
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (file) {
-      await this.app.vault.delete(file);
+    if (file instanceof TFile) {
+      await this.app.fileManager.trashFile(file);
     }
   }
 
   /** Generate a title from the first user message */
   static generateTitle(messages: ChatMessage[]): string {
     const firstUser = messages.find((m) => m.role === "user");
-    if (!firstUser) return "New Conversation";
+    if (!firstUser) return "New conversation";
     const text = firstUser.content.trim();
     if (text.length <= 50) return text;
     return text.slice(0, 47) + "...";

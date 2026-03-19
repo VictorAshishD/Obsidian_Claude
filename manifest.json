@@ -1,9 +1,9 @@
 {
   "id": "vault-claude",
   "name": "Vault Claude",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
-  "description": "Agentic AI assistant — chat with Claude to read, write, search, and transform your notes using natural language.",
+  "description": "Agentic AI research assistant for Obsidian — chat with Claude, GPT, Gemini, Llama, or local models to read, write, search, and transform your notes.",
   "author": "Victor Dasari",
   "authorUrl": "https://victordasari.com",
   "isDesktopOnly": true

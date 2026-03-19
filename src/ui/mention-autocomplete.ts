@@ -1,4 +1,4 @@
-import type { App, TFile, TFolder } from "obsidian";
+import { TFile, TFolder, type App } from "obsidian";
 
 export interface MentionItem {
   type: "note" | "folder" | "tag";
@@ -53,8 +53,8 @@ export class MentionAutocomplete {
     for (const mention of this.resolvedMentions) {
       if (mention.type === "note") {
         const file = this.app.vault.getAbstractFileByPath(mention.path);
-        if (file && "extension" in file) {
-          const content = await this.app.vault.read(file as TFile);
+        if (file instanceof TFile) {
+          const content = await this.app.vault.read(file);
           contextParts.push({
             label: `@${mention.display}`,
             content: `--- ${mention.path} ---\n${content}\n--- end ---`,
@@ -62,8 +62,8 @@ export class MentionAutocomplete {
         }
       } else if (mention.type === "folder") {
         const folder = this.app.vault.getAbstractFileByPath(mention.path);
-        if (folder && "children" in folder) {
-          const children = (folder as TFolder).children;
+        if (folder instanceof TFolder) {
+          const children = folder.children;
           const listing = children
             .map((c) => ("children" in c ? `[DIR] ${c.name}` : c.name))
             .join("\n");

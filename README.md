@@ -1,10 +1,10 @@
-# Obsidian Claude
+# Vault Claude
 
-**Agentic AI assistant for Obsidian — chat with Claude to read, write, search, and transform your notes using natural language.**
+**Agentic AI research assistant for Obsidian — chat with Claude, GPT, Gemini, Llama, or local models to read, write, search, and transform your notes.**
 
-Obsidian Claude embeds a powerful AI assistant in your sidebar. It can read, write, search, and transform your notes using natural language. Unlike generic AI chat plugins, Obsidian Claude understands Obsidian — it knows about wikilinks, frontmatter, backlinks, tags, daily notes, and your vault's folder structure.
+Vault Claude embeds a powerful AI research assistant in your sidebar. It can read, write, search, and transform your notes using natural language. Unlike generic AI chat plugins, Vault Claude understands Obsidian — it knows about wikilinks, frontmatter, backlinks, tags, daily notes, and your vault's folder structure. Use it for research, coding, writing, analysis, or any knowledge work.
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Desktop%20only-orange)
 
@@ -12,28 +12,33 @@ Obsidian Claude embeds a powerful AI assistant in your sidebar. It can read, wri
 
 ## Features
 
-### Three Connection Modes
+### Five Connection Modes
 
 | Mode | What it uses | Cost | Best for |
 |------|-------------|------|----------|
 | **Claude Code CLI** | Your existing `claude` installation | Included with Claude subscription | Users who already have Claude Code |
-| **Anthropic API** | Direct API key | Pay-per-use | Full control, specific model selection |
+| **Anthropic API** | Direct API key | Pay-per-use | Full control, specific Claude model selection |
 | **OpenRouter** | OpenRouter API key | Pay-per-use | Access to 200+ models (Claude, GPT, Gemini, Llama, etc.) |
+| **OpenAI API** | Direct OpenAI API key | Pay-per-use | GPT-4.1, o4-mini, and other OpenAI models |
+| **Ollama (Local)** | Local Ollama installation | Free | Privacy-first, offline, no API key needed |
 
 ### Two-Tiered Model System
 
 Assign a **primary model** for complex tasks and a **light model** for quick, cheap operations (tagging, TOC generation, readability checks, finding links). Saves cost without sacrificing quality where it matters.
 
 ### Sidebar Chat Panel
-- Full markdown rendering in responses
-- Streaming responses (API modes)
-- Tool call cards showing what Claude is doing (file reads, searches, edits)
-- Token usage and cost tracking
+- Full markdown rendering with debounced streaming (smooth, efficient)
+- Real-time SSE streaming across all API providers
+- Tool call cards showing what the AI is doing (file reads, searches, edits)
+- **Insert to document** — one-click button to paste any AI response into your active note
+- **Message selection** — check multiple messages, then "Summarize to document" for AI-synthesized summaries inserted directly into your note
+- **Export conversation** — save the entire chat as a markdown note in your vault
+- Token usage and cost tracking (with free local model support for Ollama)
 - Conversation history — save, load, and delete past chats
 
-### 11 Obsidian-Native Tools
+### 12 Obsidian-Native Tools
 
-Claude doesn't just see your files — it understands your vault:
+The AI doesn't just see your files — it understands your vault:
 
 | Tool | What it does |
 |------|-------------|
@@ -89,7 +94,8 @@ When Claude proposes file edits (in "Approve Edits" mode), changes are shown as 
 
 - Per-conversation token count with cost estimates
 - Hover the counter for a detailed breakdown (input/output tokens, costs)
-- Supports pricing for all Anthropic and OpenRouter models
+- Supports pricing for Anthropic, OpenAI, and OpenRouter models
+- Ollama shows token counts as "local" (free)
 
 ---
 
@@ -98,26 +104,27 @@ When Claude proposes file edits (in "Approve Edits" mode), changes are shown as 
 ### From Community Plugins (Recommended)
 
 1. Open **Settings > Community Plugins** in Obsidian
-2. Search for **Obsidian Claude**
+2. Search for **Vault Claude**
 3. Click **Install**, then **Enable**
 
 ### Manual Installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/VictorDasari/obsidian-claude/releases)
-2. Create a folder: `.obsidian/plugins/obsidian-claude/`
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/VictorAshishD/Obsidian_Claude/releases)
+2. Create a folder: `.obsidian/plugins/vault-claude/`
 3. Copy the three files into that folder
 4. Enable the plugin in **Settings > Community Plugins**
 
 ### Development
 
 ```bash
-cd "Softwares/Vault Claude"
+git clone https://github.com/VictorAshishD/Obsidian_Claude.git
+cd Obsidian_Claude
 npm install
 npm run dev      # Watch mode (auto-rebuilds)
 npm run build    # Production build
 ```
 
-After building, copy `main.js`, `manifest.json`, and `styles.css` to `.obsidian/plugins/obsidian-claude/`.
+After building, copy `main.js`, `manifest.json`, and `styles.css` to `.obsidian/plugins/vault-claude/`.
 
 ---
 
@@ -149,15 +156,32 @@ This uses your existing subscription — no additional cost.
 4. Click **Refresh models** to load all available models
 5. Select any model — Claude, GPT-4, Gemini, Llama, Mistral, and hundreds more
 
+### Option 4: OpenAI API
+
+1. Get an API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. In plugin settings, select **OpenAI API Key** as connection mode
+3. Paste your key
+4. Select your preferred model (GPT-4.1, o4-mini, GPT-4o, etc.)
+
+### Option 5: Ollama (Local)
+
+1. Install Ollama from [ollama.com](https://ollama.com)
+2. Pull a model: `ollama pull llama3.2` (or any model you prefer)
+3. In plugin settings, select **Ollama (Local)** as connection mode
+4. The plugin auto-detects your local models — select one from the dropdown
+5. No API key needed, runs entirely on your machine
+
 ---
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+L` | Toggle the chat sidebar |
-| `Ctrl+Shift+N` | Start a new conversation |
-| `Escape` | Stop current generation |
+All shortcuts are configurable via Obsidian's hotkey settings:
+
+| Action | Default |
+|--------|---------|
+| Open chat panel | *(set in Settings > Hotkeys)* |
+| Start new conversation | *(set in Settings > Hotkeys)* |
+| Stop current generation | `Escape` (while generating) |
 
 ---
 

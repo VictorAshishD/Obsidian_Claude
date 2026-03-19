@@ -1,12 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { App } from "obsidian";
+import { FileSystemAdapter, type App } from "obsidian";
 import type { VaultClaudeSettings } from "../settings";
 import { getObsidianTools, type ToolResult } from "./obsidian-tools";
 import {
   OpenRouterClient,
   toOpenRouterTools,
   type ORMessage,
-  type ORToolCall,
 } from "./openrouter-client";
 import { sendCLIMessage } from "./claude-cli-client";
 
@@ -55,18 +54,37 @@ export class AgentService {
     this.anthropicClient = null;
     this.openRouterClient = null;
 
+    const provider = this.settings.authProvider;
+
     // CLI mode doesn't need an API key
-    if (this.settings.authProvider === "claude-cli") return;
+    if (provider === "claude-cli") return;
+
+    // Ollama doesn't need an API key
+    if (provider === "ollama") {
+      this.openRouterClient = OpenRouterClient.forOllama(
+        this.settings.model,
+        this.settings.maxTokens,
+        this.settings.ollamaUrl ? `${this.settings.ollamaUrl}/v1` : undefined
+      );
+      return;
+    }
 
     if (!this.settings.apiKey) return;
 
-    if (this.settings.authProvider === "openrouter") {
-      this.openRouterClient = new OpenRouterClient(
+    if (provider === "openrouter") {
+      this.openRouterClient = OpenRouterClient.forOpenRouter(
+        this.settings.apiKey,
+        this.settings.model,
+        this.settings.maxTokens
+      );
+    } else if (provider === "openai") {
+      this.openRouterClient = OpenRouterClient.forOpenAI(
         this.settings.apiKey,
         this.settings.model,
         this.settings.maxTokens
       );
     } else {
+      // anthropic
       this.anthropicClient = new Anthropic({
         apiKey: this.settings.apiKey,
         dangerouslyAllowBrowser: true,
@@ -75,7 +93,9 @@ export class AgentService {
   }
 
   isReady(): boolean {
-    if (this.settings.authProvider === "claude-cli") return true;
+    const provider = this.settings.authProvider;
+    if (provider === "claude-cli") return true;
+    if (provider === "ollama") return this.openRouterClient !== null;
     return (
       this.settings.apiKey.length > 0 &&
       (this.anthropicClient !== null || this.openRouterClient !== null)
@@ -92,7 +112,7 @@ export class AgentService {
     this.abortController = null;
   }
 
-  /** Send a message — routes to Anthropic or OpenRouter based on provider */
+  /** Send a message — routes to the correct provider */
   async sendMessage(
     userMessage: string,
     callbacks: StreamCallbacks,
@@ -122,9 +142,10 @@ export class AgentService {
       : this.settings.model;
 
     try {
-      if (this.settings.authProvider === "claude-cli") {
+      const provider = this.settings.authProvider;
+      if (provider === "claude-cli") {
         await this.cliLoop(messageContent, systemPrompt, callbacks, effectiveModel);
-      } else if (this.settings.authProvider === "openrouter") {
+      } else if (provider === "openrouter" || provider === "openai" || provider === "ollama") {
         await this.openRouterLoop(messageContent, tools, systemPrompt, callbacks, effectiveModel);
       } else {
         await this.anthropicLoop(messageContent, tools, systemPrompt, callbacks, effectiveModel);
@@ -137,7 +158,7 @@ export class AgentService {
     }
   }
 
-  // ===== ANTHROPIC PATH =====
+  // ===== ANTHROPIC PATH (real streaming) =====
 
   private async anthropicLoop(
     userMessage: string,
@@ -147,6 +168,7 @@ export class AgentService {
     effectiveModel?: string
   ): Promise<void> {
     this.conversationHistory.push({ role: "user", content: userMessage });
+    this.trimHistory(this.conversationHistory);
 
     const anthropicTools = tools.map((t) => ({
       name: t.name,
@@ -168,13 +190,18 @@ export class AgentService {
         tools: anthropicTools,
       });
 
+      // Stream tokens as they arrive
+      stream.on("text", (text) => {
+        fullResponse += text;
+        callbacks.onToken(text);
+      });
+
+      // Wait for the full message (tool calls only available after completion)
       const response = await stream.finalMessage();
 
+      // Process tool_use blocks (text was already streamed above)
       for (const block of response.content) {
-        if (block.type === "text") {
-          fullResponse += block.text;
-          callbacks.onToken(block.text);
-        } else if (block.type === "tool_use") {
+        if (block.type === "tool_use") {
           const toolCall: ToolCallInfo = {
             id: block.id,
             name: block.name,
@@ -216,7 +243,7 @@ export class AgentService {
     }
   }
 
-  // ===== OPENROUTER PATH (OpenAI format) =====
+  // ===== OPENROUTER / OPENAI / OLLAMA PATH (streaming) =====
 
   private async openRouterLoop(
     userMessage: string,
@@ -231,6 +258,7 @@ export class AgentService {
     }
 
     this.orConversationHistory.push({ role: "user", content: userMessage });
+    this.trimORHistory();
 
     const orTools = toOpenRouterTools(
       tools.map((t) => ({
@@ -245,14 +273,20 @@ export class AgentService {
     let totalOutputTokens = 0;
 
     while (continueLoop) {
-      // Recreate client each iteration in case model changed
-      const client = new OpenRouterClient(
-        this.settings.apiKey,
-        effectiveModel || this.settings.model,
-        this.settings.maxTokens
-      );
+      const client = this.createClientForModel(effectiveModel || this.settings.model);
+      const toolCalls: ToolCallInfo[] = [];
 
-      const response = await client.chat(this.orConversationHistory, orTools);
+      // Use streaming for text delivery
+      const response = await client.chatStream(
+        this.orConversationHistory,
+        orTools,
+        {
+          onToken: (token) => callbacks.onToken(token),
+          onToolCalls: () => { /* handled below from response */ },
+          onDone: () => { /* handled below */ },
+        },
+        this.abortController?.signal
+      );
 
       if (response.usage) {
         totalInputTokens += response.usage.prompt_tokens;
@@ -261,21 +295,14 @@ export class AgentService {
 
       const choice = response.choices[0];
       if (!choice) {
-        callbacks.onError(new Error("No response from OpenRouter"));
+        callbacks.onError(new Error("No response from API"));
         return;
       }
 
       const assistantMsg = choice.message;
-      const toolCalls: ToolCallInfo[] = [];
-
-      // Handle text content
-      if (assistantMsg.content) {
-        callbacks.onToken(assistantMsg.content);
-      }
 
       // Handle tool calls
       if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
-        // Add assistant message with tool_calls to history
         this.orConversationHistory.push({
           role: "assistant",
           content: assistantMsg.content || null,
@@ -304,7 +331,6 @@ export class AgentService {
           toolCall.status = result.success ? "complete" : "error";
           callbacks.onToolResult(tc.id, result.result);
 
-          // Add tool result to history
           this.orConversationHistory.push({
             role: "tool",
             content: result.result,
@@ -344,11 +370,8 @@ export class AgentService {
     callbacks: StreamCallbacks,
     effectiveModel?: string
   ): Promise<void> {
-    // The CLI handles its own tool execution (file reads, writes, bash, etc.)
-    // We just send the prompt and get back the final result.
-    // The vault path is set as cwd so the CLI operates on vault files.
-
-    const vaultPath = (this.app.vault.adapter as any).basePath || ".";
+    const adapter = this.app.vault.adapter;
+    const vaultPath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : ".";
 
     const options: {
       cwd: string;
@@ -371,7 +394,6 @@ export class AgentService {
 
     const response = await sendCLIMessage(userMessage, options);
 
-    // Send the full response at once (CLI doesn't support token-by-token streaming to us)
     callbacks.onToken(response.content);
 
     callbacks.onComplete({
@@ -386,6 +408,38 @@ export class AgentService {
   }
 
   // ===== SHARED =====
+
+  /** Create the correct client type for the current provider and given model */
+  private createClientForModel(model: string): OpenRouterClient {
+    const provider = this.settings.authProvider;
+    if (provider === "ollama") {
+      return OpenRouterClient.forOllama(model, this.settings.maxTokens,
+        this.settings.ollamaUrl ? `${this.settings.ollamaUrl}/v1` : undefined);
+    } else if (provider === "openai") {
+      return OpenRouterClient.forOpenAI(this.settings.apiKey, model, this.settings.maxTokens);
+    } else {
+      return OpenRouterClient.forOpenRouter(this.settings.apiKey, model, this.settings.maxTokens);
+    }
+  }
+
+  /** Trim Anthropic conversation history to stay within limit */
+  private trimHistory(history: Array<Anthropic.MessageParam>): void {
+    const limit = this.settings.conversationHistoryLimit || 50;
+    // Each exchange is 2 entries (user + assistant), keep at least the latest messages
+    while (history.length > limit * 2) {
+      history.shift();
+    }
+  }
+
+  /** Trim OpenRouter conversation history, preserving the system message */
+  private trimORHistory(): void {
+    const limit = this.settings.conversationHistoryLimit || 50;
+    const maxEntries = limit * 2 + 1; // +1 for system message
+    while (this.orConversationHistory.length > maxEntries) {
+      // Always keep index 0 (system message)
+      this.orConversationHistory.splice(1, 1);
+    }
+  }
 
   private async executeTool(
     tools: ReturnType<typeof getObsidianTools>,

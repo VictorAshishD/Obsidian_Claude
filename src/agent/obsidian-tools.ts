@@ -1,4 +1,4 @@
-import type { App, TFile, TFolder } from "obsidian";
+import { TFile, TFolder, type App } from "obsidian";
 
 // --- Types ---
 
@@ -16,6 +16,17 @@ export interface ObsidianTool {
     required?: string[];
   };
   execute: (input: Record<string, unknown>) => Promise<ToolResult>;
+}
+
+// --- Result Truncation ---
+
+const MAX_RESULT_CHARS = 4000;
+
+function truncateResult(result: string): string {
+  if (result.length <= MAX_RESULT_CHARS) return result;
+  const kept = result.substring(0, MAX_RESULT_CHARS);
+  const truncatedLines = result.substring(MAX_RESULT_CHARS).split("\n").length;
+  return `${kept}\n\n[... truncated ${String(truncatedLines)} more lines. Use read_note with a specific path to see the full content.]`;
 }
 
 // --- Tool Definitions ---
@@ -41,11 +52,11 @@ export function getObsidianTools(app: App): ObsidianTool[] {
       execute: async (input) => {
         const path = input.path as string;
         const file = app.vault.getAbstractFileByPath(path);
-        if (!file || !("extension" in file)) {
+        if (!(file instanceof TFile)) {
           return { success: false, result: `File not found: ${path}` };
         }
-        const content = await app.vault.read(file as TFile);
-        return { success: true, result: content };
+        const content = await app.vault.read(file);
+        return { success: true, result: truncateResult(content) };
       },
     },
 
@@ -82,8 +93,8 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         }
 
         const existing = app.vault.getAbstractFileByPath(path);
-        if (existing && "extension" in existing) {
-          await app.vault.modify(existing as TFile, content);
+        if (existing instanceof TFile) {
+          await app.vault.modify(existing, content);
           return { success: true, result: `Updated: ${path}` };
         } else {
           await app.vault.create(path, content);
@@ -121,11 +132,11 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         const newStr = input.new_string as string;
 
         const file = app.vault.getAbstractFileByPath(path);
-        if (!file || !("extension" in file)) {
+        if (!(file instanceof TFile)) {
           return { success: false, result: `File not found: ${path}` };
         }
 
-        const content = await app.vault.read(file as TFile);
+        const content = await app.vault.read(file);
         const occurrences = content.split(oldStr).length - 1;
 
         if (occurrences === 0) {
@@ -134,12 +145,12 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         if (occurrences > 1) {
           return {
             success: false,
-            result: `String appears ${occurrences} times in ${path}. Provide more context to make it unique.`,
+            result: `String appears ${String(occurrences)} times in ${path}. Provide more context to make it unique.`,
           };
         }
 
         const newContent = content.replace(oldStr, newStr);
-        await app.vault.modify(file as TFile, newContent);
+        await app.vault.modify(file, newContent);
         return { success: true, result: `Edited ${path}: replaced 1 occurrence` };
       },
     },
@@ -177,7 +188,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
 
           for (let i = 0; i < lines.length; i++) {
             if (lines[i].toLowerCase().includes(query)) {
-              matchingLines.push(`  L${i + 1}: ${lines[i].trim().substring(0, 200)}`);
+              matchingLines.push(`  L${String(i + 1)}: ${lines[i].trim().substring(0, 200)}`);
               if (matchingLines.length >= 3) break; // max 3 lines per file
             }
           }
@@ -188,11 +199,11 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         }
 
         if (results.length === 0) {
-          return { success: true, result: `No results found for "${input.query}"` };
+          return { success: true, result: `No results found for "${String(input.query)}"` };
         }
         return {
           success: true,
-          result: `Found ${results.length} matching files:\n\n${results.join("\n\n")}`,
+          result: `Found ${String(results.length)} matching files:\n\n${results.join("\n\n")}`,
         };
       },
     },
@@ -211,28 +222,27 @@ export function getObsidianTools(app: App): ObsidianTool[] {
           },
         },
       },
-      execute: async (input) => {
+      execute: (input) => {
         const path = (input.path as string) || "";
         const folder = path
           ? app.vault.getAbstractFileByPath(path)
           : app.vault.getRoot();
 
-        if (!folder || !("children" in folder)) {
-          return { success: false, result: `Folder not found: ${path || "/"}` };
+        if (!(folder instanceof TFolder)) {
+          return Promise.resolve({ success: false, result: `Folder not found: ${path || "/"}` });
         }
 
-        const children = (folder as TFolder).children;
-        const entries = children
+        const entries = folder.children
           .map((child) => {
-            const isFolder = "children" in child;
+            const isFolder = child instanceof TFolder;
             return `${isFolder ? "[DIR] " : "      "}${child.name}`;
           })
           .sort();
 
-        return {
+        return Promise.resolve({
           success: true,
           result: `Contents of ${path || "/"}:\n${entries.join("\n")}`,
-        };
+        });
       },
     },
 
@@ -245,7 +255,8 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         type: "object",
         properties: {},
       },
-      execute: async () => {
+      execute: async (input) => {
+        void input;
         const file = app.workspace.getActiveFile();
         if (!file) {
           return { success: false, result: "No note is currently open" };
@@ -258,7 +269,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
 
         return {
           success: true,
-          result: `Path: ${file.path}\nFrontmatter: ${frontmatter}\n\nContent:\n${content}`,
+          result: truncateResult(`Path: ${file.path}\nFrontmatter: ${frontmatter}\n\nContent:\n${content}`),
         };
       },
     },
@@ -278,11 +289,11 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         },
         required: ["path"],
       },
-      execute: async (input) => {
+      execute: (input) => {
         const targetPath = input.path as string;
         const targetFile = app.vault.getAbstractFileByPath(targetPath);
         if (!targetFile) {
-          return { success: false, result: `File not found: ${targetPath}` };
+          return Promise.resolve({ success: false, result: `File not found: ${targetPath}` });
         }
 
         // Get the basename without extension for wikilink matching
@@ -305,12 +316,12 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         }
 
         if (backlinks.length === 0) {
-          return { success: true, result: `No backlinks found for ${targetPath}` };
+          return Promise.resolve({ success: true, result: `No backlinks found for ${targetPath}` });
         }
-        return {
+        return Promise.resolve({
           success: true,
-          result: `${backlinks.length} backlinks to ${targetPath}:\n${backlinks.join("\n")}`,
-        };
+          result: `${String(backlinks.length)} backlinks to ${targetPath}:\n${backlinks.join("\n")}`,
+        });
       },
     },
 
@@ -329,7 +340,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
           },
         },
       },
-      execute: async (input) => {
+      execute: (input) => {
         const searchTag = input.tag as string | undefined;
 
         if (searchTag) {
@@ -349,12 +360,12 @@ export function getObsidianTools(app: App): ObsidianTool[] {
             }
           }
 
-          return {
+          return Promise.resolve({
             success: true,
             result: matches.length > 0
-              ? `${matches.length} notes with ${normalizedTag}:\n${matches.join("\n")}`
+              ? `${String(matches.length)} notes with ${normalizedTag}:\n${matches.join("\n")}`
               : `No notes found with tag ${normalizedTag}`,
-          };
+          });
         }
 
         // List all tags
@@ -374,12 +385,12 @@ export function getObsidianTools(app: App): ObsidianTool[] {
 
         const sorted = [...tagCounts.entries()]
           .sort((a, b) => b[1] - a[1])
-          .map(([tag, count]) => `${tag} (${count})`);
+          .map(([tag, count]) => `${tag} (${String(count)})`);
 
-        return {
+        return Promise.resolve({
           success: true,
-          result: `${sorted.length} tags in vault:\n${sorted.join("\n")}`,
-        };
+          result: `${String(sorted.length)} tags in vault:\n${sorted.join("\n")}`,
+        });
       },
     },
 
@@ -397,20 +408,20 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         },
         required: ["path"],
       },
-      execute: async (input) => {
+      execute: (input) => {
         const path = input.path as string;
         const file = app.vault.getAbstractFileByPath(path);
-        if (!file || !("extension" in file)) {
-          return { success: false, result: `File not found: ${path}` };
+        if (!(file instanceof TFile)) {
+          return Promise.resolve({ success: false, result: `File not found: ${path}` });
         }
-        const cache = app.metadataCache.getFileCache(file as TFile);
+        const cache = app.metadataCache.getFileCache(file);
         if (!cache?.frontmatter) {
-          return { success: true, result: `No frontmatter in ${path}` };
+          return Promise.resolve({ success: true, result: `No frontmatter in ${path}` });
         }
-        return {
+        return Promise.resolve({
           success: true,
           result: JSON.stringify(cache.frontmatter, null, 2),
-        };
+        });
       },
     },
 
@@ -428,20 +439,20 @@ export function getObsidianTools(app: App): ObsidianTool[] {
           },
         },
       },
-      execute: async (input) => {
+      execute: (input) => {
         const maxDepth = (input.max_depth as number) || 3;
-        const result: string[] = [];
+        const lines: string[] = [];
 
         function walkFolder(folder: TFolder, depth: number, prefix: string) {
           if (depth > maxDepth) return;
 
-          const files = folder.children.filter((c) => "extension" in c);
+          const files = folder.children.filter((c) => c instanceof TFile);
           const folders = folder.children.filter(
-            (c) => "children" in c
-          ) as TFolder[];
+            (c): c is TFolder => c instanceof TFolder
+          );
 
-          result.push(
-            `${prefix}${folder.name}/ (${files.length} notes)`
+          lines.push(
+            `${prefix}${folder.name}/ (${String(files.length)} notes)`
           );
 
           folders.sort((a, b) => a.name.localeCompare(b.name));
@@ -451,7 +462,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         }
 
         walkFolder(app.vault.getRoot(), 0, "");
-        return { success: true, result: result.join("\n") };
+        return Promise.resolve({ success: true, result: lines.join("\n") });
       },
     },
 
@@ -480,16 +491,16 @@ export function getObsidianTools(app: App): ObsidianTool[] {
             "July", "August", "September", "October", "November", "December",
           ];
           const day = String(now.getDate()).padStart(2, "0");
-          dateStr = `${months[now.getMonth()]} ${day}, ${now.getFullYear()}`;
+          dateStr = `${months[now.getMonth()]} ${day}, ${String(now.getFullYear())}`;
         }
 
         const path = `DailyNotes/${dateStr}.md`;
         const file = app.vault.getAbstractFileByPath(path);
-        if (!file || !("extension" in file)) {
+        if (!(file instanceof TFile)) {
           return { success: false, result: `Daily note not found: ${path}` };
         }
-        const content = await app.vault.read(file as TFile);
-        return { success: true, result: `Path: ${path}\n\n${content}` };
+        const content = await app.vault.read(file);
+        return { success: true, result: truncateResult(`Path: ${path}\n\n${content}`) };
       },
     },
 
@@ -509,13 +520,13 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         },
         required: ["link"],
       },
-      execute: async (input) => {
+      execute: (input) => {
         const linkText = input.link as string;
         // Try direct path first
         const directPath = linkText.endsWith(".md") ? linkText : `${linkText}.md`;
         const direct = app.vault.getAbstractFileByPath(directPath);
         if (direct) {
-          return { success: true, result: `Resolved: ${direct.path}` };
+          return Promise.resolve({ success: true, result: `Resolved: ${direct.path}` });
         }
 
         // Search all files for a matching basename
@@ -526,15 +537,15 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         });
 
         if (matches.length === 0) {
-          return { success: false, result: `Could not resolve link: [[${linkText}]]` };
+          return Promise.resolve({ success: false, result: `Could not resolve link: [[${linkText}]]` });
         }
         if (matches.length === 1) {
-          return { success: true, result: `Resolved: ${matches[0].path}` };
+          return Promise.resolve({ success: true, result: `Resolved: ${matches[0].path}` });
         }
-        return {
+        return Promise.resolve({
           success: true,
           result: `Multiple matches for [[${linkText}]]:\n${matches.map((m) => m.path).join("\n")}`,
-        };
+        });
       },
     },
   ];

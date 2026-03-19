@@ -1,7 +1,7 @@
 {
   "name": "obsidian-claude",
-  "version": "0.1.0",
-  "description": "Agentic AI assistant for Obsidian — chat with Claude to read, write, search, and transform your notes using natural language.",
+  "version": "0.2.0",
+  "description": "Agentic AI research assistant for Obsidian — chat with Claude, GPT, Gemini, Llama, or local models to read, write, search, and transform your notes.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

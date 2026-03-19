@@ -1,11 +1,10 @@
-import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import type VaultClaudePlugin from "../main";
 import type { ChatMessage, ToolCallInfo } from "../agent/agent-service";
 import { parseSlashCommand, buildSlashCommandPrompt, SLASH_COMMANDS } from "../commands/slash-commands";
 import { MentionAutocomplete, type MentionItem } from "./mention-autocomplete";
 import { renderDiffCard, type PendingEdit } from "./diff-view";
-import { ConversationStore, type SavedConversation, type ConversationMeta } from "../storage/conversation-store";
-import type { TFile } from "obsidian";
+import { ConversationStore, type SavedConversation } from "../storage/conversation-store";
 
 export const VIEW_TYPE_CHAT = "vault-claude-chat";
 
@@ -25,6 +24,10 @@ export class ChatView extends ItemView {
   private activeMentions: MentionItem[] = [];
   private pendingEdits: PendingEdit[] = [];
   private currentConversationId: string | null = null;
+  private renderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private renderPending = false;
+  private selectedMessages: Set<number> = new Set(); // indices into this.messages
+  private selectionBarEl: HTMLElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: VaultClaudePlugin) {
     super(leaf);
@@ -59,14 +62,21 @@ export class ChatView extends ItemView {
       attr: { "aria-label": "Conversation history" },
     });
     setIcon(historyBtn, "clock");
-    historyBtn.addEventListener("click", () => this.showConversationList());
+    historyBtn.addEventListener("click", () => void this.showConversationList());
 
     const saveBtn = headerActions.createEl("button", {
       cls: "vault-claude-icon-btn",
       attr: { "aria-label": "Save conversation" },
     });
     setIcon(saveBtn, "save");
-    saveBtn.addEventListener("click", () => this.saveConversation());
+    saveBtn.addEventListener("click", () => void this.saveConversation());
+
+    const exportBtn = headerActions.createEl("button", {
+      cls: "vault-claude-icon-btn",
+      attr: { "aria-label": "Export conversation as note" },
+    });
+    setIcon(exportBtn, "file-output");
+    exportBtn.addEventListener("click", () => void this.exportConversationAsNote());
 
     const newChatBtn = headerActions.createEl("button", {
       cls: "vault-claude-icon-btn",
@@ -83,6 +93,26 @@ export class ChatView extends ItemView {
     this.messagesContainer = container.createDiv("vault-claude-messages");
     this.showWelcome();
 
+    // Floating selection action bar (hidden by default via CSS)
+    this.selectionBarEl = container.createDiv("vault-claude-selection-bar");
+    this.selectionBarEl.addClass("vault-claude-hidden");
+
+    const selCountEl = this.selectionBarEl.createSpan("vault-claude-sel-count");
+    selCountEl.setText("0 selected");
+
+    const selSummarizeBtn = this.selectionBarEl.createEl("button", {
+      text: "Summarize to Document",
+      cls: "vault-claude-sel-action",
+    });
+    setIcon(selSummarizeBtn.createSpan({ cls: "vault-claude-sel-icon" }), "file-plus");
+    selSummarizeBtn.addEventListener("click", () => void this.summarizeSelectedToDocument());
+
+    const selClearBtn = this.selectionBarEl.createEl("button", {
+      text: "Clear",
+      cls: "vault-claude-sel-clear",
+    });
+    selClearBtn.addEventListener("click", () => this.clearSelection());
+
     // Input area
     const inputArea = container.createDiv("vault-claude-input-area");
 
@@ -91,7 +121,7 @@ export class ChatView extends ItemView {
 
     // Slash command hint
     this.slashHintEl = inputArea.createDiv("vault-claude-slash-hint");
-    this.slashHintEl.style.display = "none";
+    this.slashHintEl.addClass("vault-claude-hidden");
 
     // Input wrapper (for positioning autocomplete dropdown)
     const inputWrapper = inputArea.createDiv("vault-claude-input-wrapper");
@@ -158,6 +188,8 @@ export class ChatView extends ItemView {
     this.currentConversationId = null;
     this.activeMentions = [];
     this.mentionAutocomplete?.clearMentions();
+    this.selectedMessages.clear();
+    this.updateSelectionBar();
     this.messagesContainer.empty();
     this.tokenCounterEl.setText("");
     this.renderMentionTags();
@@ -233,18 +265,18 @@ export class ChatView extends ItemView {
       const actions = item.createDiv("vault-claude-history-actions");
 
       const loadBtn = actions.createEl("button", { text: "Load", cls: "vault-claude-history-load" });
-      loadBtn.addEventListener("click", async () => {
-        await this.loadConversation(conv.id);
-        overlay.remove();
+      loadBtn.addEventListener("click", () => {
+        void this.loadConversation(conv.id).then(() => overlay.remove());
       });
 
       const deleteBtn = actions.createEl("button", { cls: "vault-claude-icon-btn vault-claude-history-delete" });
       setIcon(deleteBtn, "trash");
-      deleteBtn.addEventListener("click", async () => {
-        await store.delete(conv.id);
-        item.remove();
-        new Notice("Conversation deleted");
-        if (list.children.length === 0) overlay.remove();
+      deleteBtn.addEventListener("click", () => {
+        void store.delete(conv.id).then(() => {
+          item.remove();
+          new Notice("Conversation deleted");
+          if (list.children.length === 0) overlay.remove();
+        });
       });
     }
   }
@@ -308,7 +340,7 @@ export class ChatView extends ItemView {
         cmd.name.startsWith(text.split(" ")[0])
       );
       if (matching.length > 0 && !text.includes(" ")) {
-        this.slashHintEl.style.display = "block";
+        this.slashHintEl.removeClass("vault-claude-hidden");
         this.slashHintEl.empty();
         for (const cmd of matching.slice(0, 5)) {
           const hint = this.slashHintEl.createDiv("vault-claude-slash-item");
@@ -318,14 +350,14 @@ export class ChatView extends ItemView {
             e.preventDefault();
             this.inputEl.value = cmd.name + " ";
             this.inputEl.focus();
-            this.slashHintEl.style.display = "none";
+            this.slashHintEl.addClass("vault-claude-hidden");
           });
         }
       } else {
-        this.slashHintEl.style.display = "none";
+        this.slashHintEl.addClass("vault-claude-hidden");
       }
     } else {
-      this.slashHintEl.style.display = "none";
+      this.slashHintEl.addClass("vault-claude-hidden");
     }
   }
 
@@ -333,10 +365,10 @@ export class ChatView extends ItemView {
   private renderMentionTags() {
     this.mentionTagsEl.empty();
     if (this.activeMentions.length === 0) {
-      this.mentionTagsEl.style.display = "none";
+      this.mentionTagsEl.addClass("vault-claude-hidden");
       return;
     }
-    this.mentionTagsEl.style.display = "flex";
+    this.mentionTagsEl.removeClass("vault-claude-hidden");
 
     for (const mention of this.activeMentions) {
       const tag = this.mentionTagsEl.createDiv("vault-claude-mention-tag");
@@ -374,7 +406,7 @@ export class ChatView extends ItemView {
     // Add user message to UI
     this.addMessageToUI({ role: "user", content: text, timestamp: Date.now() });
     this.inputEl.value = "";
-    this.slashHintEl.style.display = "none";
+    this.slashHintEl.addClass("vault-claude-hidden");
 
     // Build the actual prompt
     let prompt = text;
@@ -484,6 +516,70 @@ export class ChatView extends ItemView {
     this.isGenerating = false;
     this.sendBtn.setText("Send");
     this.sendBtn.removeClass("vault-claude-stop-btn");
+
+    // Flush any pending render so final content is always shown
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+      this.renderDebounceTimer = null;
+    }
+    if (this.renderPending && this.currentAssistantEl) {
+      this.renderPending = false;
+      const contentEl = this.currentAssistantEl.querySelector(
+        ".vault-claude-message-content"
+      ) as HTMLElement;
+      if (contentEl) {
+        contentEl.empty();
+        MarkdownRenderer.render(this.app, this.currentAssistantContent, contentEl, "", this);
+        this.scrollToBottom();
+      }
+    }
+
+    // Wire up actions on the completed streaming message
+    if (this.currentAssistantEl) {
+      const msgIndex = this.messages.length - 1;
+      this.currentAssistantEl.dataset.msgIndex = String(msgIndex);
+      const content = this.currentAssistantContent;
+
+      // Enable checkbox
+      const checkbox = this.currentAssistantEl.querySelector(
+        ".vault-claude-msg-checkbox"
+      ) as HTMLInputElement;
+      if (checkbox) {
+        checkbox.disabled = false;
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            this.selectedMessages.add(msgIndex);
+          } else {
+            this.selectedMessages.delete(msgIndex);
+          }
+          this.updateSelectionBar();
+        });
+      }
+
+      // Add action buttons
+      const actions = this.currentAssistantEl.querySelector(
+        ".vault-claude-msg-actions"
+      ) as HTMLElement;
+      if (actions) {
+        const copyBtn = actions.createEl("button", {
+          cls: "vault-claude-msg-action-btn",
+          attr: { "aria-label": "Copy to clipboard" },
+        });
+        setIcon(copyBtn, "copy");
+        copyBtn.addEventListener("click", () => {
+          navigator.clipboard.writeText(content);
+          new Notice("Copied to clipboard");
+        });
+
+        const insertBtn = actions.createEl("button", {
+          cls: "vault-claude-msg-action-btn",
+          attr: { "aria-label": "Insert into active note" },
+        });
+        setIcon(insertBtn, "file-input");
+        insertBtn.addEventListener("click", () => void this.insertIntoDocument(content));
+      }
+    }
+
     this.currentAssistantEl = null;
   }
 
@@ -538,12 +634,55 @@ export class ChatView extends ItemView {
   /** Add a message bubble to the UI */
   private addMessageToUI(message: ChatMessage) {
     this.messages.push(message);
+    const msgIndex = this.messages.length - 1;
     const msgEl = this.messagesContainer.createDiv(
       `vault-claude-message vault-claude-${message.role}`
     );
+    msgEl.dataset.msgIndex = String(msgIndex);
 
-    const label = msgEl.createDiv("vault-claude-message-label");
+    // Top row: label + actions
+    const topRow = msgEl.createDiv("vault-claude-message-top");
+
+    // Checkbox for selection
+    const checkbox = topRow.createEl("input", {
+      cls: "vault-claude-msg-checkbox",
+      attr: { type: "checkbox" },
+    }) as HTMLInputElement;
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        this.selectedMessages.add(msgIndex);
+      } else {
+        this.selectedMessages.delete(msgIndex);
+      }
+      this.updateSelectionBar();
+    });
+
+    const label = topRow.createDiv("vault-claude-message-label");
     label.setText(message.role === "user" ? "You" : "Claude");
+
+    // Action buttons for assistant messages
+    if (message.role === "assistant") {
+      const actions = topRow.createDiv("vault-claude-msg-actions");
+
+      // Copy button
+      const copyBtn = actions.createEl("button", {
+        cls: "vault-claude-msg-action-btn",
+        attr: { "aria-label": "Copy to clipboard" },
+      });
+      setIcon(copyBtn, "copy");
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(message.content);
+        new Notice("Copied to clipboard");
+      });
+
+      // Insert to document button
+      const insertBtn = actions.createEl("button", {
+        cls: "vault-claude-msg-action-btn",
+        attr: { "aria-label": "Insert into active note" },
+      });
+      setIcon(insertBtn, "file-input");
+      insertBtn.addEventListener("click", () => void this.insertIntoDocument(message.content));
+    }
 
     const contentEl = msgEl.createDiv("vault-claude-message-content");
 
@@ -560,23 +699,47 @@ export class ChatView extends ItemView {
     const msgEl = this.messagesContainer.createDiv(
       "vault-claude-message vault-claude-assistant"
     );
-    const label = msgEl.createDiv("vault-claude-message-label");
+
+    const topRow = msgEl.createDiv("vault-claude-message-top");
+
+    // Checkbox (will be wired up in onComplete when message is finalized)
+    topRow.createEl("input", {
+      cls: "vault-claude-msg-checkbox",
+      attr: { type: "checkbox", disabled: "true" },
+    });
+
+    const label = topRow.createDiv("vault-claude-message-label");
     label.setText("Claude");
+
+    // Actions placeholder — populated after streaming completes
+    topRow.createDiv("vault-claude-msg-actions");
+
     msgEl.createDiv("vault-claude-message-content");
     this.scrollToBottom();
     return msgEl;
   }
 
+  /** Debounced markdown render — avoids re-rendering on every single token */
   private renderAssistantMessage() {
     if (!this.currentAssistantEl) return;
-    const contentEl = this.currentAssistantEl.querySelector(
-      ".vault-claude-message-content"
-    ) as HTMLElement;
-    if (!contentEl) return;
+    this.renderPending = true;
 
-    contentEl.empty();
-    MarkdownRenderer.render(this.app, this.currentAssistantContent, contentEl, "", this);
-    this.scrollToBottom();
+    if (this.renderDebounceTimer) return; // already scheduled
+
+    this.renderDebounceTimer = setTimeout(() => {
+      this.renderDebounceTimer = null;
+      if (!this.renderPending || !this.currentAssistantEl) return;
+      this.renderPending = false;
+
+      const contentEl = this.currentAssistantEl.querySelector(
+        ".vault-claude-message-content"
+      ) as HTMLElement;
+      if (!contentEl) return;
+
+      contentEl.empty();
+      MarkdownRenderer.render(this.app, this.currentAssistantContent, contentEl, "", this);
+      this.scrollToBottom();
+    }, 80); // ~12fps — smooth enough, way cheaper than per-token
   }
 
   private addToolCallCard(toolCall: ToolCallInfo) {
@@ -620,12 +783,186 @@ export class ChatView extends ItemView {
 
   private updateTokenCounter() {
     if (!this.plugin.settings.showTokenCount) return;
-    const summary = this.plugin.costTracker.getConversationSummary(this.plugin.settings.model);
+    const isOllama = this.plugin.settings.authProvider === "ollama";
+    const model = this.plugin.settings.model;
+    const summary = this.plugin.costTracker.getConversationSummary(model, isOllama);
     this.tokenCounterEl.setText(summary);
     this.tokenCounterEl.setAttribute(
       "title",
-      this.plugin.costTracker.getDetailedSummary(this.plugin.settings.model)
+      this.plugin.costTracker.getDetailedSummary(model, isOllama)
     );
+  }
+
+  /** Insert content at cursor position in the active note */
+  private async insertIntoDocument(content: string) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice("No note is open. Open a note first.");
+      return;
+    }
+
+    const editor = this.app.workspace.activeEditor?.editor;
+    if (editor) {
+      // Insert at cursor
+      const cursor = editor.getCursor();
+      editor.replaceRange(content + "\n", cursor);
+      new Notice(`Inserted into ${activeFile.basename}`);
+    } else {
+      // Fallback: append to file
+      const existing = await this.app.vault.read(activeFile);
+      await this.app.vault.modify(activeFile, existing + "\n\n" + content);
+      new Notice(`Appended to ${activeFile.basename}`);
+    }
+  }
+
+  /** Update the floating selection bar visibility and count */
+  private updateSelectionBar() {
+    if (!this.selectionBarEl) return;
+    const count = this.selectedMessages.size;
+    if (count === 0) {
+      this.selectionBarEl.addClass("vault-claude-hidden");
+      return;
+    }
+    this.selectionBarEl.removeClass("vault-claude-hidden");
+    const countEl = this.selectionBarEl.querySelector(".vault-claude-sel-count");
+    if (countEl) countEl.setText(`${count} selected`);
+  }
+
+  /** Clear all selected messages */
+  private clearSelection() {
+    this.selectedMessages.clear();
+    // Uncheck all checkboxes
+    this.messagesContainer.querySelectorAll(".vault-claude-msg-checkbox").forEach((el) => {
+      (el as HTMLInputElement).checked = false;
+    });
+    this.updateSelectionBar();
+  }
+
+  /** Summarize selected messages via AI and insert into active document */
+  private async summarizeSelectedToDocument() {
+    if (this.selectedMessages.size === 0) return;
+    if (this.isGenerating) {
+      new Notice("Wait for the current response to finish.");
+      return;
+    }
+
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice("No note is open. Open a note to insert the summary.");
+      return;
+    }
+
+    // Gather selected message contents
+    const selectedContents = Array.from(this.selectedMessages)
+      .sort((a, b) => a - b)
+      .map((idx) => {
+        const msg = this.messages[idx];
+        return `[${msg.role === "user" ? "User" : "Assistant"}]:\n${msg.content}`;
+      })
+      .join("\n\n---\n\n");
+
+    // Build a summarization prompt
+    const prompt =
+      `The user has selected the following messages from a conversation. ` +
+      `Create a rich, well-structured summary that synthesizes the key insights, findings, and content. ` +
+      `Use markdown formatting (headings, bullet points, bold for key terms). ` +
+      `Write it as a standalone document section — not as a conversation recap.\n\n` +
+      `---\n${selectedContents}\n---`;
+
+    // Clear selection visually
+    this.clearSelection();
+
+    // Show "Summarizing..." in chat
+    this.isGenerating = true;
+    this.sendBtn.setText("Stop");
+    this.sendBtn.addClass("vault-claude-stop-btn");
+    this.currentAssistantContent = "";
+    this.currentAssistantEl = this.createAssistantMessageEl();
+
+    // Add a system note so user knows what's happening
+    this.addSystemMessage(`Summarizing ${this.selectedMessages.size > 0 ? "" : "selected messages"} → ${activeFile.basename}...`);
+
+    await this.plugin.agentService.sendMessage(
+      prompt,
+      {
+        onToken: (token) => {
+          this.currentAssistantContent += token;
+          this.renderAssistantMessage();
+        },
+        onToolCall: () => {},
+        onToolResult: () => {},
+        onComplete: async (message) => {
+          this.messages.push(message);
+          if (message.tokenCount) {
+            this.plugin.costTracker.addUsage(message.tokenCount.input, message.tokenCount.output);
+            this.updateTokenCounter();
+          }
+          this.finishGeneration();
+
+          // Insert the summary into the document
+          await this.insertIntoDocument(message.content);
+        },
+        onError: (error) => {
+          this.addSystemMessage(`Error: ${error.message}`);
+          this.finishGeneration();
+        },
+      },
+      undefined,
+      false // use primary model for synthesis
+    );
+  }
+
+  /** Export the full conversation as a markdown note in the vault */
+  async exportConversationAsNote() {
+    if (this.messages.length === 0) {
+      new Notice("No conversation to export");
+      return;
+    }
+
+    // Build markdown content
+    const title = ConversationStore.generateTitle(this.messages);
+    const date = new Date().toISOString().split("T")[0];
+    const lines: string[] = [
+      "---",
+      `title: "${title}"`,
+      `creation_date: "${date}"`,
+      `tags:`,
+      `  - ai-conversation`,
+      "---",
+      "",
+      `# ${title}`,
+      "",
+    ];
+
+    for (const msg of this.messages) {
+      if (msg.role === "user") {
+        lines.push(`## You`, "", msg.content, "");
+      } else {
+        lines.push(`## Claude`, "", msg.content, "");
+      }
+    }
+
+    // Determine save path — use the active file's folder, or vault root
+    const activeFile = this.app.workspace.getActiveFile();
+    const folder = activeFile ? activeFile.parent?.path || "" : "";
+    const safeName = title.replace(/[\\/:*?"<>|]/g, "-").substring(0, 80);
+    const path = folder ? `${folder}/${safeName}.md` : `${safeName}.md`;
+
+    // Check for existing
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, lines.join("\n"));
+    } else if (!existing) {
+      await this.app.vault.create(path, lines.join("\n"));
+    }
+
+    new Notice(`Conversation saved to ${path}`);
+
+    // Open the new note
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file) {
+      await this.app.workspace.openLinkText(path, "", false);
+    }
   }
 
   private scrollToBottom() {

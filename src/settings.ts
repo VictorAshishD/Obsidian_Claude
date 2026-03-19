@@ -1,10 +1,11 @@
 import { App, Notice, PluginSettingTab, Setting, requestUrl } from "obsidian";
 import type VaultClaudePlugin from "./main";
 import { detectClaudeCLI, type CLIDetectionResult } from "./agent/claude-cli-client";
+import { fetchOllamaModels } from "./agent/openrouter-client";
 
 export type PermissionMode = "auto" | "approve-edits" | "plan-only";
 
-export type AuthProvider = "claude-cli" | "anthropic" | "openrouter" | "bedrock" | "vertex" | "azure";
+export type AuthProvider = "claude-cli" | "anthropic" | "openai" | "openrouter" | "ollama";
 
 export interface OpenRouterModel {
   id: string;
@@ -28,6 +29,8 @@ export interface VaultClaudeSettings {
   openRouterModelsCache: OpenRouterModel[];
   openRouterModelsCacheTime: number;
   cliMaxTurns: number;
+  ollamaUrl: string;
+  ollamaModelsCache: string[];
 }
 
 export const DEFAULT_SETTINGS: VaultClaudeSettings = {
@@ -45,6 +48,8 @@ export const DEFAULT_SETTINGS: VaultClaudeSettings = {
   openRouterModelsCache: [],
   openRouterModelsCacheTime: 0,
   cliMaxTurns: 10,
+  ollamaUrl: "http://localhost:11434",
+  ollamaModelsCache: [],
 };
 
 const ANTHROPIC_MODELS: Record<string, string> = {
@@ -53,8 +58,35 @@ const ANTHROPIC_MODELS: Record<string, string> = {
   "claude-opus-4-6": "Opus 4.6 (most capable)",
 };
 
+const OPENAI_MODELS: Record<string, string> = {
+  "gpt-4.1": "GPT-4.1 (most capable)",
+  "gpt-4.1-mini": "GPT-4.1 Mini (balanced)",
+  "gpt-4.1-nano": "GPT-4.1 Nano (fastest, cheapest)",
+  "o4-mini": "o4-mini (reasoning)",
+  "gpt-4o": "GPT-4o (legacy)",
+  "gpt-4o-mini": "GPT-4o Mini (legacy)",
+};
+
 const OPENROUTER_API_BASE = "https://openrouter.ai/api/v1";
 const MODEL_CACHE_TTL = 1000 * 60 * 60; // 1 hour
+
+/** Helper to build a styled info box using DOM APIs */
+function createInfoBox(containerEl: HTMLElement, fragments: Array<{ text?: string; tag?: string; bold?: boolean; code?: boolean; href?: string; br?: boolean }>): void {
+  const box = containerEl.createDiv({ cls: "vault-claude-info-box" });
+  for (const frag of fragments) {
+    if (frag.br) {
+      box.createEl("br");
+    } else if (frag.code) {
+      box.createEl("code", { text: frag.text });
+    } else if (frag.bold) {
+      box.createEl("strong", { text: frag.text });
+    } else if (frag.href) {
+      box.createEl("a", { text: frag.text, href: frag.href });
+    } else if (frag.text) {
+      box.appendText(frag.text);
+    }
+  }
+}
 
 /** Fetch available models from OpenRouter API */
 export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
@@ -91,31 +123,30 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     // ================================================================
     // CONNECTION MODE
     // ================================================================
-    containerEl.createEl("h2", { text: "Connection Mode" });
-
-    const modeDesc = containerEl.createDiv("vault-claude-mode-desc");
-    modeDesc.innerHTML =
-      '<p style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">' +
-      "Choose how Obsidian Claude connects to AI. You can use your <strong>existing Claude Code installation</strong> " +
-      "(no extra cost if you have a Claude subscription), or connect directly via <strong>API key</strong> " +
-      "for more control over model selection and providers.</p>";
+    new Setting(containerEl).setName("Connection mode").setHeading();
 
     new Setting(containerEl)
       .setName("Connection mode")
-      .setDesc("")
+      .setDesc(
+        "Choose how Vault Claude connects to AI. Use your existing Claude Code installation " +
+        "or connect directly via API key for more control."
+      )
       .addDropdown((dropdown) =>
         dropdown
           .addOption("claude-cli", "Claude Code CLI (uses your existing login)")
-          .addOption("anthropic", "Anthropic API Key (direct)")
-          .addOption("openrouter", "OpenRouter API Key (multi-model)")
-          .addOption("bedrock", "AWS Bedrock")
-          .addOption("vertex", "Google Vertex AI")
-          .addOption("azure", "Microsoft Azure")
+          .addOption("anthropic", "Anthropic API key (Claude)")
+          .addOption("openai", "OpenAI API key (GPT)")
+          .addOption("openrouter", "OpenRouter API key (200+ models)")
+          .addOption("ollama", "Ollama (local models, free)")
           .setValue(this.plugin.settings.authProvider)
           .onChange(async (value: string) => {
             this.plugin.settings.authProvider = value as AuthProvider;
-            if (value !== "openrouter" && value !== "claude-cli") {
+            if (value === "openai") {
+              this.plugin.settings.model = "gpt-4.1-mini";
+            } else if (value === "anthropic") {
               this.plugin.settings.model = "claude-sonnet-4-6";
+            } else if (value === "ollama") {
+              this.plugin.settings.model = this.plugin.settings.ollamaModelsCache[0] || "";
             }
             await this.plugin.saveSettings();
             this.display();
@@ -130,6 +161,11 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     } else if (provider === "openrouter") {
       this.renderAPIKeySettings(containerEl, "openrouter");
       this.renderOpenRouterModelSelector(containerEl);
+    } else if (provider === "openai") {
+      this.renderAPIKeySettings(containerEl, "openai");
+      this.renderOpenAIModelSelector(containerEl);
+    } else if (provider === "ollama") {
+      this.renderOllamaSettings(containerEl);
     } else {
       this.renderAPIKeySettings(containerEl, provider);
       this.renderAnthropicModelSelector(containerEl);
@@ -157,18 +193,19 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     // ================================================================
     // LIGHT MODEL (Two-Tiered System)
     // ================================================================
-    containerEl.createEl("h2", { text: "Two-Tiered Model System" });
+    new Setting(containerEl).setName("Two-tiered model system").setHeading();
 
-    const tierDesc = containerEl.createDiv("vault-claude-mode-desc");
-    tierDesc.innerHTML =
-      '<p style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">' +
-      "Some quick tasks (tagging, TOC generation, readability checks, finding links) use a <strong>lighter, " +
-      "cheaper model</strong> to save cost and respond faster. Complex tasks use your primary model above.</p>";
+    new Setting(containerEl)
+      .setName("About")
+      .setDesc(
+        "Some quick tasks (tagging, TOC, readability, links) use a lighter, cheaper model " +
+        "to save cost and respond faster. Complex tasks use your primary model."
+      );
 
     if (provider === "openrouter") {
       const lightSetting = new Setting(containerEl)
         .setName("Light model")
-        .setDesc("Used for quick tasks marked with \u26A1. Select from your OpenRouter models.");
+        .setDesc("Used for quick tasks. Select from your OpenRouter models.");
 
       lightSetting.addDropdown((dropdown) => {
         this.lightModelDropdownEl = dropdown.selectEl;
@@ -185,12 +222,31 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
-    } else {
+    } else if (provider === "ollama") {
       new Setting(containerEl)
         .setName("Light model")
-        .setDesc("Used for quick tasks marked with \u26A1 (tags, TOC, links, readability)")
+        .setDesc("Used for quick tasks. Select from your local Ollama models.")
         .addDropdown((dropdown) => {
-          for (const [id, label] of Object.entries(ANTHROPIC_MODELS)) {
+          const cached = this.plugin.settings.ollamaModelsCache;
+          if (cached.length > 0) {
+            for (const m of cached) dropdown.addOption(m, m);
+            dropdown.setValue(this.plugin.settings.lightModel);
+          } else {
+            dropdown.addOption("", "-- Refresh models above first --");
+            dropdown.setDisabled(true);
+          }
+          dropdown.onChange(async (value: string) => {
+            this.plugin.settings.lightModel = value;
+            await this.plugin.saveSettings();
+          });
+        });
+    } else {
+      const modelList = provider === "openai" ? OPENAI_MODELS : ANTHROPIC_MODELS;
+      new Setting(containerEl)
+        .setName("Light model")
+        .setDesc("Used for quick tasks (tags, TOC, links, readability)")
+        .addDropdown((dropdown) => {
+          for (const [id, label] of Object.entries(modelList)) {
             dropdown.addOption(id, label);
           }
           dropdown
@@ -205,7 +261,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     // ================================================================
     // PERMISSIONS
     // ================================================================
-    containerEl.createEl("h2", { text: "Permissions" });
+    new Setting(containerEl).setName("Permissions").setHeading();
 
     new Setting(containerEl)
       .setName("Permission mode")
@@ -213,8 +269,8 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       .addDropdown((dropdown) =>
         dropdown
           .addOption("auto", "Auto (no confirmations)")
-          .addOption("approve-edits", "Approve Edits (confirm writes)")
-          .addOption("plan-only", "Plan Only (propose, don't execute)")
+          .addOption("approve-edits", "Approve edits (confirm writes)")
+          .addOption("plan-only", "Plan only (propose, don't execute)")
           .setValue(this.plugin.settings.permissionMode)
           .onChange(async (value: string) => {
             this.plugin.settings.permissionMode = value as PermissionMode;
@@ -225,7 +281,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     // ================================================================
     // BEHAVIOR
     // ================================================================
-    containerEl.createEl("h2", { text: "Behavior" });
+    new Setting(containerEl).setName("Behavior").setHeading();
 
     new Setting(containerEl)
       .setName("Auto-include active note")
@@ -266,7 +322,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     // ================================================================
     // CUSTOM SYSTEM PROMPT
     // ================================================================
-    containerEl.createEl("h2", { text: "Custom System Prompt" });
+    new Setting(containerEl).setName("Custom system prompt").setHeading();
 
     new Setting(containerEl)
       .setName("System prompt")
@@ -277,7 +333,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.systemPrompt)
           .then((t) => {
             t.inputEl.rows = 6;
-            t.inputEl.style.width = "100%";
+            t.inputEl.addClass("vault-claude-textarea-wide");
           })
           .onChange(async (value: string) => {
             this.plugin.settings.systemPrompt = value;
@@ -288,27 +344,23 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     // ================================================================
     // SAVE BUTTON
     // ================================================================
-    const saveSection = containerEl.createDiv("vault-claude-save-section");
-    saveSection.style.cssText =
-      "margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--background-modifier-border); " +
-      "display: flex; justify-content: flex-end; gap: 12px; align-items: center;";
+    const saveSection = containerEl.createDiv({ cls: "vault-claude-save-section" });
 
-    const savedMsg = saveSection.createSpan();
-    savedMsg.style.cssText = "color: var(--text-success); font-size: 12px; opacity: 0; transition: opacity 0.3s;";
+    const savedMsg = saveSection.createSpan({ cls: "vault-claude-saved-msg" });
     savedMsg.setText("\u2713 Settings saved");
 
     const saveBtn = saveSection.createEl("button", {
-      text: "Save Settings",
+      text: "Save settings",
       cls: "mod-cta",
     });
     saveBtn.addEventListener("click", async () => {
       await this.plugin.saveSettings();
       this.plugin.agentService.initialize();
-      savedMsg.style.opacity = "1";
+      savedMsg.addClass("is-visible");
       setTimeout(() => {
-        savedMsg.style.opacity = "0";
+        savedMsg.removeClass("is-visible");
       }, 2000);
-      new Notice("Obsidian Claude settings saved");
+      new Notice("Vault Claude settings saved");
     });
   }
 
@@ -317,20 +369,25 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
   // ================================================================
 
   private renderCLISettings(containerEl: HTMLElement): void {
-    // Info box
-    const infoBox = containerEl.createDiv("vault-claude-info-box");
-    infoBox.innerHTML =
-      '<div style="background: var(--background-secondary); border: 1px solid var(--background-modifier-border); ' +
-      'border-radius: var(--radius-m); padding: 12px; margin-bottom: 12px; font-size: 12px;">' +
-      "<strong>How this works:</strong> Obsidian Claude sends prompts to the Claude Code CLI " +
-      "(<code>claude -p</code>) installed on your system. This uses your existing Claude " +
-      "subscription — no separate API key or extra cost needed." +
-      "<br><br>" +
-      "<strong>Requirements:</strong><br>" +
-      "1. Claude Code CLI installed (<code>npm install -g @anthropic-ai/claude-code</code>)<br>" +
-      "2. Authenticated (<code>claude login</code> in your terminal)<br>" +
-      "3. Active Claude subscription (Pro, Team, or Enterprise)" +
-      "</div>";
+    createInfoBox(containerEl, [
+      { bold: true, text: "How this works: " },
+      { text: "Vault Claude sends prompts to the Claude Code CLI (" },
+      { code: true, text: "claude -p" },
+      { text: ") installed on your system. This uses your existing Claude subscription \u2014 no separate API key needed." },
+      { br: true },
+      { br: true },
+      { bold: true, text: "Requirements:" },
+      { br: true },
+      { text: "1. Claude Code CLI installed (" },
+      { code: true, text: "npm install -g @anthropic-ai/claude-code" },
+      { text: ")" },
+      { br: true },
+      { text: "2. Authenticated (" },
+      { code: true, text: "claude login" },
+      { text: " in your terminal)" },
+      { br: true },
+      { text: "3. Active Claude subscription (Pro, Team, or Enterprise)" },
+    ]);
 
     // Status detection
     const statusSetting = new Setting(containerEl)
@@ -348,10 +405,10 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
     );
 
     // Auto-check on render
-    this.checkCLIStatus(statusSetting);
+    void this.checkCLIStatus(statusSetting);
 
     // Model selection (CLI supports these natively)
-    containerEl.createEl("h2", { text: "Model" });
+    new Setting(containerEl).setName("Model").setHeading();
 
     new Setting(containerEl)
       .setName("Model")
@@ -398,18 +455,29 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       setting.descEl.empty();
 
       if (result.found && result.authenticated) {
-        setting.descEl.innerHTML =
-          `<span style="color: var(--text-success);">&#10003; Connected</span> — ` +
-          `<code>${result.version}</code> at <code>${result.path}</code>`;
+        const span = setting.descEl.createSpan({ cls: "vault-claude-status-ok" });
+        span.setText("\u2713 Connected");
+        setting.descEl.appendText(" \u2014 ");
+        setting.descEl.createEl("code", { text: result.version || "" });
+        setting.descEl.appendText(" at ");
+        setting.descEl.createEl("code", { text: result.path || "" });
       } else if (result.found && !result.authenticated) {
-        setting.descEl.innerHTML =
-          `<span style="color: var(--text-warning);">&#9888; CLI found but not authenticated</span><br>` +
-          `<code>${result.version}</code> at <code>${result.path}</code><br>` +
-          `<span style="font-size: 11px;">Run <code>claude login</code> in your terminal to authenticate.</span>`;
+        const span = setting.descEl.createSpan({ cls: "vault-claude-status-warn" });
+        span.setText("\u26A0 CLI found but not authenticated");
+        setting.descEl.createEl("br");
+        setting.descEl.createEl("code", { text: result.version || "" });
+        setting.descEl.appendText(" at ");
+        setting.descEl.createEl("code", { text: result.path || "" });
+        setting.descEl.createEl("br");
+        setting.descEl.appendText("Run ");
+        setting.descEl.createEl("code", { text: "claude login" });
+        setting.descEl.appendText(" in your terminal to authenticate.");
       } else {
-        setting.descEl.innerHTML =
-          `<span style="color: var(--text-error);">&#10007; Not found</span><br>` +
-          `<span style="font-size: 11px;">Install with: <code>npm install -g @anthropic-ai/claude-code</code></span>`;
+        const span = setting.descEl.createSpan({ cls: "vault-claude-status-err" });
+        span.setText("\u2717 Not found");
+        setting.descEl.createEl("br");
+        setting.descEl.appendText("Install with: ");
+        setting.descEl.createEl("code", { text: "npm install -g @anthropic-ai/claude-code" });
       }
     } catch (err) {
       setting.descEl.setText(`Error checking CLI: ${err instanceof Error ? err.message : String(err)}`);
@@ -417,47 +485,49 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
   }
 
   // ================================================================
-  // API KEY SETTINGS (Anthropic / OpenRouter / Bedrock / Vertex / Azure)
+  // API KEY SETTINGS
   // ================================================================
 
   private renderAPIKeySettings(containerEl: HTMLElement, provider: string): void {
     const isOpenRouter = provider === "openrouter";
+    const isOpenAI = provider === "openai";
 
-    // Info box for the current provider
-    const infoBox = containerEl.createDiv();
     if (isOpenRouter) {
-      infoBox.innerHTML =
-        '<div style="background: var(--background-secondary); border: 1px solid var(--background-modifier-border); ' +
-        'border-radius: var(--radius-m); padding: 12px; margin-bottom: 12px; font-size: 12px;">' +
-        "<strong>OpenRouter</strong> gives you access to hundreds of models (Claude, GPT, Gemini, Llama, etc.) " +
-        "through a single API key. Pay-per-use pricing. Get a key at " +
-        '<a href="https://openrouter.ai/keys">openrouter.ai/keys</a>.' +
-        "</div>";
-    } else if (provider === "anthropic") {
-      infoBox.innerHTML =
-        '<div style="background: var(--background-secondary); border: 1px solid var(--background-modifier-border); ' +
-        'border-radius: var(--radius-m); padding: 12px; margin-bottom: 12px; font-size: 12px;">' +
-        "<strong>Direct Anthropic API</strong> — pay-per-use with your own API key. " +
-        "Get one at " +
-        '<a href="https://console.anthropic.com">console.anthropic.com</a>. ' +
-        "This is separate from a Claude Pro/Team subscription." +
-        "</div>";
+      createInfoBox(containerEl, [
+        { bold: true, text: "OpenRouter" },
+        { text: " gives you access to hundreds of models (Claude, GPT, Gemini, Llama, etc.) through a single API key. Pay-per-use pricing. Get a key at " },
+        { href: "https://openrouter.ai/keys", text: "openrouter.ai/keys" },
+        { text: "." },
+      ]);
+    } else if (isOpenAI) {
+      createInfoBox(containerEl, [
+        { bold: true, text: "OpenAI API" },
+        { text: " \u2014 access GPT-4.1, o4-mini, and other OpenAI models directly. Pay-per-use with your own API key. Get one at " },
+        { href: "https://platform.openai.com/api-keys", text: "platform.openai.com/api-keys" },
+        { text: "." },
+      ]);
+    } else {
+      createInfoBox(containerEl, [
+        { bold: true, text: "Direct Anthropic API" },
+        { text: " \u2014 pay-per-use with your own API key. Get one at " },
+        { href: "https://console.anthropic.com", text: "console.anthropic.com" },
+        { text: ". This is separate from a Claude Pro/Team subscription." },
+      ]);
     }
+
+    const placeholder = isOpenRouter ? "sk-or-..." : isOpenAI ? "sk-..." : "sk-ant-...";
+    const providerLabel = isOpenRouter ? "OpenRouter" : isOpenAI ? "OpenAI" : "Anthropic";
 
     new Setting(containerEl)
       .setName("API key")
-      .setDesc(
-        isOpenRouter
-          ? "Your OpenRouter API key"
-          : `Your ${provider === "anthropic" ? "Anthropic" : provider} API key`
-      )
+      .setDesc(`Your ${providerLabel} API key`)
       .addText((text) =>
         text
-          .setPlaceholder(isOpenRouter ? "sk-or-..." : "sk-ant-...")
+          .setPlaceholder(placeholder)
           .setValue(this.plugin.settings.apiKey)
           .then((t) => {
             t.inputEl.type = "password";
-            t.inputEl.style.width = "300px";
+            t.inputEl.addClass("vault-claude-input-wide");
           })
           .onChange(async (value: string) => {
             this.plugin.settings.apiKey = value.trim();
@@ -465,7 +535,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h2", { text: "Model" });
+    new Setting(containerEl).setName("Model").setHeading();
   }
 
   // ================================================================
@@ -487,6 +557,133 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
       });
+  }
+
+  private renderOpenAIModelSelector(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName("Model")
+      .setDesc("Which OpenAI model to use")
+      .addDropdown((dropdown) => {
+        for (const [id, label] of Object.entries(OPENAI_MODELS)) {
+          dropdown.addOption(id, label);
+        }
+        dropdown
+          .setValue(this.plugin.settings.model)
+          .onChange(async (value: string) => {
+            this.plugin.settings.model = value;
+            await this.plugin.saveSettings();
+          });
+      });
+  }
+
+  private renderOllamaSettings(containerEl: HTMLElement): void {
+    createInfoBox(containerEl, [
+      { bold: true, text: "Ollama" },
+      { text: " runs AI models locally on your machine \u2014 completely free, no API key needed. Install from " },
+      { href: "https://ollama.com", text: "ollama.com" },
+      { text: ", then pull a model (" },
+      { code: true, text: "ollama pull llama3.2" },
+      { text: ") and make sure Ollama is running." },
+    ]);
+
+    new Setting(containerEl)
+      .setName("Ollama URL")
+      .setDesc("The URL where Ollama is running")
+      .addText((text) =>
+        text
+          .setPlaceholder("http://localhost:11434")
+          .setValue(this.plugin.settings.ollamaUrl)
+          .then((t) => { t.inputEl.addClass("vault-claude-input-wide"); })
+          .onChange(async (value: string) => {
+            this.plugin.settings.ollamaUrl = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl).setName("Model").setHeading();
+
+    const modelSetting = new Setting(containerEl)
+      .setName("Model")
+      .setDesc("Select a locally installed Ollama model. Click refresh to detect models.");
+
+    const dropdownState: { el: HTMLSelectElement | null } = { el: null };
+
+    modelSetting.addDropdown((dropdown) => {
+      dropdownState.el = dropdown.selectEl;
+      const cached = this.plugin.settings.ollamaModelsCache;
+      if (cached.length > 0) {
+        for (const m of cached) dropdown.addOption(m, m);
+        dropdown.setValue(this.plugin.settings.model);
+      } else {
+        dropdown.addOption("", "-- Click refresh to detect models --");
+        dropdown.setDisabled(true);
+      }
+      dropdown.onChange(async (value: string) => {
+        this.plugin.settings.model = value;
+        await this.plugin.saveSettings();
+      });
+    });
+
+    modelSetting.addButton((btn) =>
+      btn.setButtonText("Refresh models").onClick(async () => {
+        btn.setButtonText("Detecting...");
+        btn.setDisabled(true);
+        try {
+          const models = await fetchOllamaModels(this.plugin.settings.ollamaUrl);
+          const modelNames = models.map((m) => m.name);
+          this.plugin.settings.ollamaModelsCache = modelNames;
+
+          if (!modelNames.includes(this.plugin.settings.model)) {
+            this.plugin.settings.model = modelNames[0] || "";
+          }
+
+          await this.plugin.saveSettings();
+
+          if (dropdownState.el) {
+            dropdownState.el.empty();
+            for (const name of modelNames) {
+              dropdownState.el.createEl("option", { value: name, text: name });
+            }
+            dropdownState.el.value = this.plugin.settings.model;
+            dropdownState.el.disabled = false;
+          }
+
+          new Notice(`Found ${String(modelNames.length)} Ollama model${modelNames.length !== 1 ? "s" : ""}`);
+        } catch (err) {
+          new Notice(
+            `Failed to detect Ollama models: ${err instanceof Error ? err.message : String(err)}`
+          );
+        } finally {
+          btn.setButtonText("Refresh models");
+          btn.setDisabled(false);
+        }
+      })
+    );
+
+    // Auto-detect on render if cache is empty
+    if (this.plugin.settings.ollamaModelsCache.length === 0) {
+      void (async () => {
+        try {
+          const models = await fetchOllamaModels(this.plugin.settings.ollamaUrl);
+          const modelNames = models.map((m) => m.name);
+          this.plugin.settings.ollamaModelsCache = modelNames;
+          if (!modelNames.includes(this.plugin.settings.model)) {
+            this.plugin.settings.model = modelNames[0] || "";
+          }
+          await this.plugin.saveSettings();
+          if (dropdownState.el) {
+            dropdownState.el.empty();
+            for (const name of modelNames) {
+              dropdownState.el.createEl("option", { value: name, text: name });
+            }
+            dropdownState.el.value = this.plugin.settings.model;
+            dropdownState.el.disabled = false;
+          }
+        } catch {
+          // Silent — user will use Refresh button
+        }
+      })();
+    }
   }
 
   private renderOpenRouterModelSelector(containerEl: HTMLElement): void {
@@ -540,7 +737,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             this.lightModelDropdownEl.disabled = false;
           }
 
-          new Notice(`Loaded ${models.length} models from OpenRouter`);
+          new Notice(`Loaded ${String(models.length)} models from OpenRouter`);
         } catch (err) {
           new Notice(
             `Failed to fetch models: ${err instanceof Error ? err.message : String(err)}`
@@ -554,7 +751,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
 
     const cacheAge = Date.now() - this.plugin.settings.openRouterModelsCacheTime;
     if (this.plugin.settings.openRouterModelsCache.length === 0 || cacheAge > MODEL_CACHE_TTL) {
-      this.autoFetchModels();
+      void this.autoFetchModels();
     }
   }
 

@@ -33,14 +33,12 @@ export default class VaultClaudePlugin extends Plugin {
     this.addCommand({
       id: "open-chat",
       name: "Open chat panel",
-      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "l" }],
       callback: () => this.activateChatView(),
     });
 
     this.addCommand({
       id: "new-conversation",
       name: "Start new conversation",
-      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "n" }],
       callback: () => {
         this.costTracker.resetConversation();
         this.agentService.clearHistory();
@@ -60,7 +58,7 @@ export default class VaultClaudePlugin extends Plugin {
       name: "Save current conversation",
       callback: () => {
         const view = this.getChatView();
-        if (view) view.saveConversation();
+        if (view) void view.saveConversation();
       },
     });
 
@@ -131,7 +129,8 @@ export default class VaultClaudePlugin extends Plugin {
   getChatView(): ChatView | null {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT);
     if (leaves.length > 0) {
-      return leaves[0].view as ChatView;
+      const view = leaves[0].view;
+      if (view instanceof ChatView) return view;
     }
     return null;
   }
