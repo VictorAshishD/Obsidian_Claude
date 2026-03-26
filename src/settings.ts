@@ -139,7 +139,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           .addOption("openrouter", "OpenRouter API key (200+ models)")
           .addOption("ollama", "Ollama (local models, free)")
           .setValue(this.plugin.settings.authProvider)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.authProvider = value as AuthProvider;
             if (value === "openai") {
               this.plugin.settings.model = "gpt-4.1-mini";
@@ -148,8 +148,7 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             } else if (value === "ollama") {
               this.plugin.settings.model = this.plugin.settings.ollamaModelsCache[0] || "";
             }
-            await this.plugin.saveSettings();
-            this.display();
+            void this.plugin.saveSettings().then(() => this.display());
           })
       );
 
@@ -181,11 +180,11 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         text
           .setPlaceholder("8192")
           .setValue(String(this.plugin.settings.maxTokens))
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             const parsed = parseInt(value, 10);
             if (!isNaN(parsed) && parsed > 0) {
               this.plugin.settings.maxTokens = parsed;
-              await this.plugin.saveSettings();
+              void this.plugin.saveSettings();
             }
           })
       );
@@ -217,9 +216,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           dropdown.addOption("", "-- Refresh models above first --");
           dropdown.setDisabled(true);
         }
-        dropdown.onChange(async (value: string) => {
+        dropdown.onChange((value: string) => {
           this.plugin.settings.lightModel = value;
-          await this.plugin.saveSettings();
+          void this.plugin.saveSettings();
         });
       });
     } else if (provider === "ollama") {
@@ -235,9 +234,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             dropdown.addOption("", "-- Refresh models above first --");
             dropdown.setDisabled(true);
           }
-          dropdown.onChange(async (value: string) => {
+          dropdown.onChange((value: string) => {
             this.plugin.settings.lightModel = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           });
         });
     } else {
@@ -251,9 +250,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           }
           dropdown
             .setValue(this.plugin.settings.lightModel)
-            .onChange(async (value: string) => {
+            .onChange((value: string) => {
               this.plugin.settings.lightModel = value;
-              await this.plugin.saveSettings();
+              void this.plugin.saveSettings();
             });
         });
     }
@@ -272,9 +271,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           .addOption("approve-edits", "Approve edits (confirm writes)")
           .addOption("plan-only", "Plan only (propose, don't execute)")
           .setValue(this.plugin.settings.permissionMode)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.permissionMode = value as PermissionMode;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -289,9 +288,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.autoIncludeActiveNote)
-          .onChange(async (value: boolean) => {
+          .onChange((value: boolean) => {
             this.plugin.settings.autoIncludeActiveNote = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -301,9 +300,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.showToolCalls)
-          .onChange(async (value: boolean) => {
+          .onChange((value: boolean) => {
             this.plugin.settings.showToolCalls = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -313,9 +312,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.showTokenCount)
-          .onChange(async (value: boolean) => {
+          .onChange((value: boolean) => {
             this.plugin.settings.showTokenCount = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -335,9 +334,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             t.inputEl.rows = 6;
             t.inputEl.addClass("vault-claude-textarea-wide");
           })
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.systemPrompt = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -353,14 +352,15 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       text: "Save settings",
       cls: "mod-cta",
     });
-    saveBtn.addEventListener("click", async () => {
-      await this.plugin.saveSettings();
-      this.plugin.agentService.initialize();
-      savedMsg.addClass("is-visible");
-      setTimeout(() => {
-        savedMsg.removeClass("is-visible");
-      }, 2000);
-      new Notice("Vault Claude settings saved");
+    saveBtn.addEventListener("click", () => {
+      void this.plugin.saveSettings().then(() => {
+        this.plugin.agentService.initialize();
+        savedMsg.addClass("is-visible");
+        setTimeout(() => {
+          savedMsg.removeClass("is-visible");
+        }, 2000);
+        new Notice("Vault Claude settings saved");
+      });
     });
   }
 
@@ -395,12 +395,13 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
       .setDesc("Checking...");
 
     statusSetting.addButton((btn) =>
-      btn.setButtonText("Check status").onClick(async () => {
+      btn.setButtonText("Check status").onClick(() => {
         btn.setButtonText("Checking...");
         btn.setDisabled(true);
-        await this.checkCLIStatus(statusSetting);
-        btn.setButtonText("Check status");
-        btn.setDisabled(false);
+        void this.checkCLIStatus(statusSetting).then(() => {
+          btn.setButtonText("Check status");
+          btn.setDisabled(false);
+        });
       })
     );
 
@@ -420,9 +421,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         }
         dropdown
           .setValue(this.plugin.settings.model)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.model = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           });
       });
 
@@ -437,11 +438,11 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         text
           .setPlaceholder("10")
           .setValue(String(this.plugin.settings.cliMaxTurns))
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             const parsed = parseInt(value, 10);
             if (!isNaN(parsed) && parsed > 0 && parsed <= 50) {
               this.plugin.settings.cliMaxTurns = parsed;
-              await this.plugin.saveSettings();
+              void this.plugin.saveSettings();
             }
           })
       );
@@ -529,9 +530,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
             t.inputEl.type = "password";
             t.inputEl.addClass("vault-claude-input-wide");
           })
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.apiKey = value.trim();
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -552,9 +553,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         }
         dropdown
           .setValue(this.plugin.settings.model)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.model = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           });
       });
   }
@@ -569,9 +570,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         }
         dropdown
           .setValue(this.plugin.settings.model)
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.model = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           });
       });
   }
@@ -594,9 +595,9 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
           .setPlaceholder("http://localhost:11434")
           .setValue(this.plugin.settings.ollamaUrl)
           .then((t) => { t.inputEl.addClass("vault-claude-input-wide"); })
-          .onChange(async (value: string) => {
+          .onChange((value: string) => {
             this.plugin.settings.ollamaUrl = value.trim();
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -618,45 +619,47 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         dropdown.addOption("", "-- Click refresh to detect models --");
         dropdown.setDisabled(true);
       }
-      dropdown.onChange(async (value: string) => {
+      dropdown.onChange((value: string) => {
         this.plugin.settings.model = value;
-        await this.plugin.saveSettings();
+        void this.plugin.saveSettings();
       });
     });
 
     modelSetting.addButton((btn) =>
-      btn.setButtonText("Refresh models").onClick(async () => {
+      btn.setButtonText("Refresh models").onClick(() => {
         btn.setButtonText("Detecting...");
         btn.setDisabled(true);
-        try {
-          const models = await fetchOllamaModels(this.plugin.settings.ollamaUrl);
-          const modelNames = models.map((m) => m.name);
-          this.plugin.settings.ollamaModelsCache = modelNames;
+        void (async () => {
+          try {
+            const models = await fetchOllamaModels(this.plugin.settings.ollamaUrl);
+            const modelNames = models.map((m) => m.name);
+            this.plugin.settings.ollamaModelsCache = modelNames;
 
-          if (!modelNames.includes(this.plugin.settings.model)) {
-            this.plugin.settings.model = modelNames[0] || "";
-          }
-
-          await this.plugin.saveSettings();
-
-          if (dropdownState.el) {
-            dropdownState.el.empty();
-            for (const name of modelNames) {
-              dropdownState.el.createEl("option", { value: name, text: name });
+            if (!modelNames.includes(this.plugin.settings.model)) {
+              this.plugin.settings.model = modelNames[0] || "";
             }
-            dropdownState.el.value = this.plugin.settings.model;
-            dropdownState.el.disabled = false;
-          }
 
-          new Notice(`Found ${String(modelNames.length)} Ollama model${modelNames.length !== 1 ? "s" : ""}`);
-        } catch (err) {
-          new Notice(
-            `Failed to detect Ollama models: ${err instanceof Error ? err.message : String(err)}`
-          );
-        } finally {
-          btn.setButtonText("Refresh models");
-          btn.setDisabled(false);
-        }
+            await this.plugin.saveSettings();
+
+            if (dropdownState.el) {
+              dropdownState.el.empty();
+              for (const name of modelNames) {
+                dropdownState.el.createEl("option", { value: name, text: name });
+              }
+              dropdownState.el.value = this.plugin.settings.model;
+              dropdownState.el.disabled = false;
+            }
+
+            new Notice(`Found ${String(modelNames.length)} Ollama model${modelNames.length !== 1 ? "s" : ""}`);
+          } catch (err) {
+            new Notice(
+              `Failed to detect Ollama models: ${err instanceof Error ? err.message : String(err)}`
+            );
+          } finally {
+            btn.setButtonText("Refresh models");
+            btn.setDisabled(false);
+          }
+        })();
       })
     );
 
@@ -703,49 +706,51 @@ export class VaultClaudeSettingTab extends PluginSettingTab {
         dropdown.setDisabled(true);
       }
 
-      dropdown.onChange(async (value: string) => {
+      dropdown.onChange((value: string) => {
         this.plugin.settings.model = value;
-        await this.plugin.saveSettings();
+        void this.plugin.saveSettings();
       });
     });
 
     setting.addButton((btn) =>
-      btn.setButtonText("Refresh models").onClick(async () => {
+      btn.setButtonText("Refresh models").onClick(() => {
         btn.setButtonText("Loading...");
         btn.setDisabled(true);
-        try {
-          const models = await fetchOpenRouterModels();
-          this.plugin.settings.openRouterModelsCache = models;
-          this.plugin.settings.openRouterModelsCacheTime = Date.now();
+        void (async () => {
+          try {
+            const models = await fetchOpenRouterModels();
+            this.plugin.settings.openRouterModelsCache = models;
+            this.plugin.settings.openRouterModelsCacheTime = Date.now();
 
-          if (!models.some((m) => m.id === this.plugin.settings.model)) {
-            const claude = models.find((m) => m.id.includes("claude-sonnet"));
-            this.plugin.settings.model = claude?.id || models[0]?.id || "";
+            if (!models.some((m) => m.id === this.plugin.settings.model)) {
+              const claude = models.find((m) => m.id.includes("claude-sonnet"));
+              this.plugin.settings.model = claude?.id || models[0]?.id || "";
+            }
+
+            await this.plugin.saveSettings();
+
+            if (this.modelDropdownEl) {
+              this.populateModelDropdown(this.modelDropdownEl, models);
+              this.modelDropdownEl.value = this.plugin.settings.model;
+              this.modelDropdownEl.disabled = false;
+            }
+
+            if (this.lightModelDropdownEl) {
+              this.populateModelDropdown(this.lightModelDropdownEl, models);
+              this.lightModelDropdownEl.value = this.plugin.settings.lightModel;
+              this.lightModelDropdownEl.disabled = false;
+            }
+
+            new Notice(`Loaded ${String(models.length)} models from OpenRouter`);
+          } catch (err) {
+            new Notice(
+              `Failed to fetch models: ${err instanceof Error ? err.message : String(err)}`
+            );
+          } finally {
+            btn.setButtonText("Refresh models");
+            btn.setDisabled(false);
           }
-
-          await this.plugin.saveSettings();
-
-          if (this.modelDropdownEl) {
-            this.populateModelDropdown(this.modelDropdownEl, models);
-            this.modelDropdownEl.value = this.plugin.settings.model;
-            this.modelDropdownEl.disabled = false;
-          }
-
-          if (this.lightModelDropdownEl) {
-            this.populateModelDropdown(this.lightModelDropdownEl, models);
-            this.lightModelDropdownEl.value = this.plugin.settings.lightModel;
-            this.lightModelDropdownEl.disabled = false;
-          }
-
-          new Notice(`Loaded ${String(models.length)} models from OpenRouter`);
-        } catch (err) {
-          new Notice(
-            `Failed to fetch models: ${err instanceof Error ? err.message : String(err)}`
-          );
-        } finally {
-          btn.setButtonText("Refresh models");
-          btn.setDisabled(false);
-        }
+        })();
       })
     );
 

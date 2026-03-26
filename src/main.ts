@@ -26,14 +26,14 @@ export default class VaultClaudePlugin extends Plugin {
 
     // Add ribbon icon to toggle chat
     this.addRibbonIcon("message-circle", "Open Obsidian Claude", () => {
-      this.activateChatView();
+      void this.activateChatView();
     });
 
     // --- Core commands ---
     this.addCommand({
       id: "open-chat",
       name: "Open chat panel",
-      callback: () => this.activateChatView(),
+      callback: () => { void this.activateChatView(); },
     });
 
     this.addCommand({
@@ -76,13 +76,14 @@ export default class VaultClaudePlugin extends Plugin {
       this.addCommand({
         id: `slash-${cmd.name.slice(1)}`,
         name: `${cmd.name} — ${cmd.description}`,
-        callback: async () => {
-          await this.activateChatView();
-          const view = this.getChatView();
-          if (view) {
-            view.insertText(cmd.name + " ");
-            view.focusInput();
-          }
+        callback: () => {
+          void this.activateChatView().then(() => {
+            const view = this.getChatView();
+            if (view) {
+              view.insertText(cmd.name + " ");
+              view.focusInput();
+            }
+          });
         },
       });
     }

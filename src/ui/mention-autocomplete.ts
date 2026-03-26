@@ -24,6 +24,9 @@ export class MentionAutocomplete {
   private mentionStart = -1;
   private resolvedMentions: MentionItem[] = [];
   private onMentionsChanged: (mentions: MentionItem[]) => void;
+  private boundOnInput: () => void;
+  private boundOnKeyDown: (e: KeyboardEvent) => void;
+  private boundOnBlur: () => void;
 
   constructor(
     private app: App,
@@ -32,6 +35,12 @@ export class MentionAutocomplete {
     onMentionsChanged: (mentions: MentionItem[]) => void
   ) {
     this.onMentionsChanged = onMentionsChanged;
+    this.boundOnInput = this.onInput.bind(this);
+    this.boundOnKeyDown = this.onKeyDown.bind(this);
+    this.boundOnBlur = () => {
+      // Delay to allow click on dropdown item
+      setTimeout(() => this.hideDropdown(), 200);
+    };
     this.attachListeners();
   }
 
@@ -102,18 +111,18 @@ export class MentionAutocomplete {
   }
 
   destroy(): void {
+    this.inputEl.removeEventListener("input", this.boundOnInput);
+    this.inputEl.removeEventListener("keydown", this.boundOnKeyDown);
+    this.inputEl.removeEventListener("blur", this.boundOnBlur);
     this.hideDropdown();
   }
 
   // --- Private ---
 
   private attachListeners(): void {
-    this.inputEl.addEventListener("input", this.onInput.bind(this));
-    this.inputEl.addEventListener("keydown", this.onKeyDown.bind(this));
-    this.inputEl.addEventListener("blur", () => {
-      // Delay to allow click on dropdown item
-      setTimeout(() => this.hideDropdown(), 200);
-    });
+    this.inputEl.addEventListener("input", this.boundOnInput);
+    this.inputEl.addEventListener("keydown", this.boundOnKeyDown);
+    this.inputEl.addEventListener("blur", this.boundOnBlur);
   }
 
   private onInput(): void {

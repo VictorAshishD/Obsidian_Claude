@@ -126,7 +126,13 @@ export class OpenRouterClient {
     return response.json as ORResponse;
   }
 
-  /** Stream a chat completion — delivers tokens via callback, returns full message when done */
+  /**
+   * Stream a chat completion — delivers tokens via callback, returns full message when done.
+   *
+   * Note: This method uses the global `fetch` instead of Obsidian's `requestUrl` because
+   * `requestUrl` does not support streaming/SSE responses. Streaming requires access to
+   * a ReadableStream via `response.body.getReader()`, which only `fetch` provides.
+   */
   async chatStream(
     messages: ORMessage[],
     tools: ORToolDef[] | undefined,
@@ -290,7 +296,7 @@ export function toOpenRouterTools(
   }>
 ): ORToolDef[] {
   return tools.map((t) => ({
-    type: "function" as const,
+    type: "function",
     function: {
       name: t.name,
       description: t.description,

@@ -50,7 +50,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["path"],
       },
       execute: async (input) => {
-        const path = input.path as string;
+        const path = String(input.path);
         const file = app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) {
           return { success: false, result: `File not found: ${path}` };
@@ -80,8 +80,8 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["path", "content"],
       },
       execute: async (input) => {
-        const path = input.path as string;
-        const content = input.content as string;
+        const path = String(input.path);
+        const content = String(input.content);
 
         // Ensure parent directory exists
         const dir = path.substring(0, path.lastIndexOf("/"));
@@ -127,9 +127,9 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["path", "old_string", "new_string"],
       },
       execute: async (input) => {
-        const path = input.path as string;
-        const oldStr = input.old_string as string;
-        const newStr = input.new_string as string;
+        const path = String(input.path);
+        const oldStr = String(input.old_string);
+        const newStr = String(input.new_string);
 
         const file = app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) {
@@ -175,8 +175,8 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["query"],
       },
       execute: async (input) => {
-        const query = (input.query as string).toLowerCase();
-        const maxResults = (input.max_results as number) || 20;
+        const query = String(input.query).toLowerCase();
+        const maxResults = Number(input.max_results) || 20;
         const files = app.vault.getMarkdownFiles();
         const results: string[] = [];
 
@@ -223,7 +223,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         },
       },
       execute: (input) => {
-        const path = (input.path as string) || "";
+        const path = input.path ? String(input.path) : "";
         const folder = path
           ? app.vault.getAbstractFileByPath(path)
           : app.vault.getRoot();
@@ -290,7 +290,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["path"],
       },
       execute: (input) => {
-        const targetPath = input.path as string;
+        const targetPath = String(input.path);
         const targetFile = app.vault.getAbstractFileByPath(targetPath);
         if (!targetFile) {
           return Promise.resolve({ success: false, result: `File not found: ${targetPath}` });
@@ -341,7 +341,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         },
       },
       execute: (input) => {
-        const searchTag = input.tag as string | undefined;
+        const searchTag = input.tag ? String(input.tag) : undefined;
 
         if (searchTag) {
           // Find notes with this specific tag
@@ -409,7 +409,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["path"],
       },
       execute: (input) => {
-        const path = input.path as string;
+        const path = String(input.path);
         const file = app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) {
           return Promise.resolve({ success: false, result: `File not found: ${path}` });
@@ -440,7 +440,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         },
       },
       execute: (input) => {
-        const maxDepth = (input.max_depth as number) || 3;
+        const maxDepth = Number(input.max_depth) || 3;
         const lines: string[] = [];
 
         function walkFolder(folder: TFolder, depth: number, prefix: string) {
@@ -483,7 +483,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["date"],
       },
       execute: async (input) => {
-        let dateStr = input.date as string;
+        let dateStr = String(input.date);
         if (dateStr.toLowerCase() === "today") {
           const now = new Date();
           const months = [
@@ -521,7 +521,7 @@ export function getObsidianTools(app: App): ObsidianTool[] {
         required: ["link"],
       },
       execute: (input) => {
-        const linkText = input.link as string;
+        const linkText = String(input.link);
         // Try direct path first
         const directPath = linkText.endsWith(".md") ? linkText : `${linkText}.md`;
         const direct = app.vault.getAbstractFileByPath(directPath);

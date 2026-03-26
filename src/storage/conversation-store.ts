@@ -71,7 +71,7 @@ export class ConversationStore {
       if (!(child instanceof TFile) || child.extension !== "json") continue;
 
       try {
-        const content = await this.app.vault.read(child);
+        const content = await this.app.vault.cachedRead(child);
         const data = JSON.parse(content) as SavedConversation;
         conversations.push({
           id: data.id,

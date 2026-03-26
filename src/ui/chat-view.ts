@@ -47,6 +47,7 @@ export class ChatView extends ItemView {
   }
 
   async onOpen() {
+    await super.onOpen();
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass("vault-claude-container");
@@ -101,7 +102,7 @@ export class ChatView extends ItemView {
     selCountEl.setText("0 selected");
 
     const selSummarizeBtn = this.selectionBarEl.createEl("button", {
-      text: "Summarize to Document",
+      text: "Summarize to document",
       cls: "vault-claude-sel-action",
     });
     setIcon(selSummarizeBtn.createSpan({ cls: "vault-claude-sel-icon" }), "file-plus");
@@ -134,7 +135,7 @@ export class ChatView extends ItemView {
     this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        this.handleSend();
+        void this.handleSend();
       }
       if (e.key === "Escape" && this.isGenerating) {
         this.plugin.agentService.abort();
@@ -169,14 +170,19 @@ export class ChatView extends ItemView {
         this.plugin.agentService.abort();
         this.finishGeneration();
       } else {
-        this.handleSend();
+        void this.handleSend();
       }
     });
   }
 
   async onClose() {
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+      this.renderDebounceTimer = null;
+    }
     this.plugin.agentService.abort();
     this.mentionAutocomplete?.destroy();
+    await super.onClose();
   }
 
   /** Public: clear the chat display */
@@ -245,7 +251,7 @@ export class ChatView extends ItemView {
     const overlay = this.messagesContainer.createDiv("vault-claude-history-overlay");
 
     const header = overlay.createDiv("vault-claude-history-header");
-    header.createEl("h4", { text: "Saved Conversations" });
+    header.createEl("h4", { text: "Saved conversations" });
     const closeBtn = header.createEl("button", { cls: "vault-claude-icon-btn" });
     setIcon(closeBtn, "x");
     closeBtn.addEventListener("click", () => overlay.remove());
@@ -567,7 +573,7 @@ export class ChatView extends ItemView {
         });
         setIcon(copyBtn, "copy");
         copyBtn.addEventListener("click", () => {
-          navigator.clipboard.writeText(content);
+          void navigator.clipboard.writeText(content);
           new Notice("Copied to clipboard");
         });
 
@@ -592,7 +598,7 @@ export class ChatView extends ItemView {
           filePath: tc.input.path as string,
           oldContent: tc.input.old_string as string,
           newContent: tc.input.new_string as string,
-          description: `Edit in ${tc.input.path}`,
+          description: `Edit in ${String(tc.input.path)}`,
           status: "accepted", // Already applied by the tool — show as accepted
         };
         this.pendingEdits.push(edit);
@@ -671,7 +677,7 @@ export class ChatView extends ItemView {
       });
       setIcon(copyBtn, "copy");
       copyBtn.addEventListener("click", () => {
-        navigator.clipboard.writeText(message.content);
+        void navigator.clipboard.writeText(message.content);
         new Notice("Copied to clipboard");
       });
 
@@ -891,7 +897,7 @@ export class ChatView extends ItemView {
         },
         onToolCall: () => {},
         onToolResult: () => {},
-        onComplete: async (message) => {
+        onComplete: (message) => {
           this.messages.push(message);
           if (message.tokenCount) {
             this.plugin.costTracker.addUsage(message.tokenCount.input, message.tokenCount.output);
@@ -900,7 +906,7 @@ export class ChatView extends ItemView {
           this.finishGeneration();
 
           // Insert the summary into the document
-          await this.insertIntoDocument(message.content);
+          void this.insertIntoDocument(message.content);
         },
         onError: (error) => {
           this.addSystemMessage(`Error: ${error.message}`);
